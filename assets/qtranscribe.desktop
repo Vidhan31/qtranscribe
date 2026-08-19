@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=QTranscribe
+Exec=qtranscribe
+Icon=qtranscribe
+Categories=Utility;
+Terminal=false
+StartupWMClass=qtranscribe
+Comment=Speech to Text Application

@@ -1,0 +1,39 @@
+cmake_minimum_required(VERSION 3.16)
+
+project(keyinjectord
+    VERSION 0.1.0
+    LANGUAGES CXX
+)
+
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/../../cmake/CompilerFlags.cmake")
+    include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/CompilerFlags.cmake")
+elseif(EXISTS "${CMAKE_SOURCE_DIR}/cmake/CompilerFlags.cmake")
+    include("${CMAKE_SOURCE_DIR}/cmake/CompilerFlags.cmake")
+endif()
+
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(LIBEVDEV REQUIRED IMPORTED_TARGET libevdev)
+pkg_check_modules(LIBCAP REQUIRED IMPORTED_TARGET libcap)
+
+add_executable(keyinjectord
+    main.cpp
+    capability.cpp
+    uinput_device.cpp
+    ipc_server.cpp
+    logging.h
+)
+
+target_link_libraries(keyinjectord PRIVATE
+    PkgConfig::LIBEVDEV
+    PkgConfig::LIBCAP
+)
+
+if(PROJECT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)
+    include(GNUInstallDirs)
+    install(TARGETS keyinjectord
+        DESTINATION ${CMAKE_INSTALL_BINDIR}
+    )
+endif()

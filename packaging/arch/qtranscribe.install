@@ -1,0 +1,13 @@
+post_install() {
+  # Apply DAC override capability to keyinjectord binary for unprivileged /dev/uinput access
+  setcap cap_dac_override=p usr/bin/keyinjectord 2>/dev/null || true
+}
+
+post_upgrade() {
+  post_install
+}
+
+post_remove() {
+  # Cleanup hook on package removal
+  true
+}

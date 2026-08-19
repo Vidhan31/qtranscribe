@@ -1,0 +1,58 @@
+add_library(qtranscribe_core STATIC
+    AudioRecorder.h
+    AudioRecorder.cpp
+    GlobalShortcutManager.h
+    GlobalShortcutManager.cpp
+    GroqApiClient.h
+    GroqApiClient.cpp
+    GroqResponseParser.h
+    GroqResponseParser.cpp
+    ApiRequestHandler.h
+    ApiRequestHandler.cpp
+    GroqSttClient.h
+    GroqSttClient.cpp
+    GroqLlmClient.h
+    GroqLlmClient.cpp
+    GroqUsageTracker.h
+    GroqUsageTracker.cpp
+    ClipboardManager.h
+    ClipboardManager.cpp
+    DaemonConnector.h
+    DaemonConnector.cpp
+    TextInjectorClient.h
+    TextInjectorClient.cpp
+    SpeechController.h
+    SpeechController.cpp
+    TranscriptionModel.h
+    TranscriptionModel.cpp
+    DBusService.h
+    DBusService.cpp
+    LoggingCategories.h
+    LoggingCategories.cpp
+    TrayIconHelper.h
+    LicenseHelper.h
+    ColorUtils.h
+    ColorUtils.cpp
+)
+
+target_include_directories(qtranscribe_core
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(qtranscribe_core
+    PUBLIC
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Qml
+        Qt6::Network
+        Qt6::Multimedia
+        Qt6::DBus
+        Qt6Keychain::Qt6Keychain
+)
+
+target_compile_definitions(qtranscribe_core
+    PRIVATE
+        QTRANSCRIBE_VERSION="${PROJECT_VERSION}"
+)
