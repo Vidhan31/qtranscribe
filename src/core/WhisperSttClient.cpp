@@ -46,10 +46,11 @@ WhisperSttClient::~WhisperSttClient() {
         m_worker->cancel(0);
     }
     m_workerThread.quit();
+    m_workerThread.requestInterruption();
     if (!m_workerThread.wait(QDeadlineTimer(2000))) {
-        qCWarning(lcSpeech)
-            << "WhisperSttClient: Worker thread did not exit within 2s deadline, waiting unconditionally";
-        m_workerThread.wait();
+        qCWarning(lcSpeech) << "WhisperSttClient: Worker thread did not exit within 2s deadline, terminating thread";
+        m_workerThread.terminate();
+        m_workerThread.wait(1000);
     }
 }
 
