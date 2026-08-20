@@ -215,10 +215,14 @@ void WhisperSttClient::checkModelStatus() {
 
 void WhisperSttClient::loadModel(const QString& customPath) {
     const QString path = customPath.isEmpty() ? resolveModelPath() : customPath;
+    const uint64_t loadId = m_nextLoadRequestId++;
+    m_activeLoadRequestId = loadId;
+
     if (!QFile::exists(path)) {
         setLastError(tr("Whisper model file not found at %1. Please download it in Model Settings.").arg(path));
         m_modelLoaded = false;
         m_loadedModelPath.clear();
+        m_computeDevice.clear();
         emit modelStatusChanged();
         emit readyChanged();
         emit noticeChanged();
@@ -226,11 +230,14 @@ void WhisperSttClient::loadModel(const QString& customPath) {
     }
 
     setLastError({});
-    m_loadedModelPath = path;
-    emit requestLoadModel(path, true);
+    emit requestLoadModel(loadId, path, true);
 }
 
 void WhisperSttClient::unloadModel() {
+    m_activeLoadRequestId = m_nextLoadRequestId++;
+    m_modelLoaded = false;
+    m_loadedModelPath.clear();
+    m_computeDevice.clear();
     cancel();
     emit requestUnloadModel();
 }
@@ -280,13 +287,21 @@ void WhisperSttClient::cancel() {
     }
 }
 
-void WhisperSttClient::onWorkerModelLoaded(bool success, const QString& error, const QString& activeDevice) {
+void WhisperSttClient::onWorkerModelLoaded(uint64_t loadRequestId, const QString& modelPath, bool success,
+                                           const QString& error, const QString& activeDevice) {
+    if (loadRequestId == 0 || loadRequestId != m_activeLoadRequestId) {
+        qCDebug(lcSpeech) << "WhisperSttClient: Discarding stale model load result for request" << loadRequestId
+                          << "path:" << modelPath << "(active load request:" << m_activeLoadRequestId << ")";
+        return;
+    }
+
     m_modelLoaded = success;
     m_computeDevice = activeDevice;
     if (!success) {
         m_loadedModelPath.clear();
         setLastError(error.isEmpty() ? tr("Failed to load whisper.cpp model") : error);
     } else {
+        m_loadedModelPath = modelPath;
         setLastError({});
     }
 

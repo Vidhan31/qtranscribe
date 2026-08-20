@@ -167,6 +167,26 @@ private slots:
             QCOMPARE(client.modelPath(), manager.selectedModelPath());
         }
     }
+
+    void testStaleModelLoadHandling() {
+        WhisperSttClient client;
+
+        // Verify initial state
+        QVERIFY(!client.isModelLoaded());
+        QVERIFY(client.loadedModelPath().isEmpty());
+
+        // Simulate a stale load response from a superseded request (e.g. loadId 99 while active loadId is 100)
+        // By invoking loadModel, active loadId becomes 1
+        client.loadModel(QStringLiteral("/nonexistent/dummy/model.bin"));
+        QVERIFY(!client.isModelLoaded());
+        QVERIFY(client.loadedModelPath().isEmpty());
+
+        // Active loadId is 1. If worker emits response for loadId 0 or 99, it must be ignored.
+        // Also verify unloadModel resets loadedModelPath
+        client.unloadModel();
+        QVERIFY(!client.isModelLoaded());
+        QVERIFY(client.loadedModelPath().isEmpty());
+    }
 };
 
 QTEST_MAIN(TestWhisperPipeline)

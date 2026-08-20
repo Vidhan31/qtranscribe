@@ -165,7 +165,7 @@ WhisperWorker::~WhisperWorker() {
     }
 }
 
-void WhisperWorker::loadModel(const QString& modelPath, bool useGpu) {
+void WhisperWorker::loadModel(uint64_t loadRequestId, const QString& modelPath, bool useGpu) {
     cancel();
     if (m_ctx) {
         whisper_free(m_ctx);
@@ -174,12 +174,13 @@ void WhisperWorker::loadModel(const QString& modelPath, bool useGpu) {
 
     if (!QFile::exists(modelPath)) {
         qWarning() << "WhisperWorker: Model file does not exist at:" << modelPath;
-        emit modelLoaded(false, tr("Whisper model file not found at %1").arg(modelPath), QString());
+        emit modelLoaded(loadRequestId, modelPath, false, tr("Whisper model file not found at %1").arg(modelPath),
+                         QString());
         return;
     }
 
     qCDebug(lcSpeech) << "WhisperWorker: Initializing whisper.cpp context from" << modelPath
-                      << "(requested GPU:" << useGpu << ")";
+                      << "(requested GPU:" << useGpu << ", loadRequestId:" << loadRequestId << ")";
 
     whisper_context_params cparams = whisper_context_default_params();
     cparams.use_gpu = useGpu;
@@ -188,7 +189,7 @@ void WhisperWorker::loadModel(const QString& modelPath, bool useGpu) {
     m_ctx = whisper_init_from_file_with_params(modelPath.toUtf8().constData(), cparams);
     if (!m_ctx) {
         qWarning() << "WhisperWorker: whisper_init_from_file_with_params failed for" << modelPath;
-        emit modelLoaded(false, tr("Failed to initialize whisper model context"), QString());
+        emit modelLoaded(loadRequestId, modelPath, false, tr("Failed to initialize whisper model context"), QString());
         return;
     }
 
@@ -200,7 +201,7 @@ void WhisperWorker::loadModel(const QString& modelPath, bool useGpu) {
 
     m_abortRequested.store(false, std::memory_order_release);
     qCDebug(lcSpeech) << "WhisperWorker: Model loaded successfully. Active device:" << m_activeDevice;
-    emit modelLoaded(true, QString(), m_activeDevice);
+    emit modelLoaded(loadRequestId, modelPath, true, QString(), m_activeDevice);
 }
 
 void WhisperWorker::unloadModel() {

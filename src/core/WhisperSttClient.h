@@ -65,13 +65,14 @@ signals:
     void lastErrorChanged();
 
     // Internal signals routed to worker
-    void requestLoadModel(const QString& path, bool useGpu);
+    void requestLoadModel(uint64_t loadRequestId, const QString& path, bool useGpu);
     void requestUnloadModel();
     void requestTranscribe(uint64_t requestId, const QByteArray& wavData, const QString& language,
                            const QString& prompt);
 
 private slots:
-    void onWorkerModelLoaded(bool success, const QString& error, const QString& activeDevice);
+    void onWorkerModelLoaded(uint64_t loadRequestId, const QString& modelPath, bool success, const QString& error,
+                             const QString& activeDevice);
     void onWorkerModelUnloaded();
     void onWorkerTranscriptionFinished(uint64_t requestId, const QString& text);
     void onWorkerTranscriptionFailed(uint64_t requestId, const QString& error);
@@ -85,6 +86,8 @@ private:
     WhisperWorker* m_worker = nullptr;
     QPointer<WhisperModelManager> m_modelManager;
 
+    uint64_t m_nextLoadRequestId = 1;
+    uint64_t m_activeLoadRequestId = 0;
     uint64_t m_nextRequestId = 1;
     uint64_t m_activeRequestId = 0;
     bool m_modelLoaded = false;

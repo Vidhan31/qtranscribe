@@ -22,13 +22,14 @@ public:
     bool isAborted(uint64_t requestId = 0) const;
 
 public slots:
-    void loadModel(const QString& modelPath, bool useGpu = true);
+    void loadModel(uint64_t loadRequestId, const QString& modelPath, bool useGpu = true);
     void unloadModel();
     void transcribe(uint64_t requestId, const QByteArray& wavData, const QString& language = QString(),
                     const QString& prompt = QString());
 
 signals:
-    void modelLoaded(bool success, const QString& error, const QString& activeDevice);
+    void modelLoaded(uint64_t loadRequestId, const QString& modelPath, bool success, const QString& error,
+                     const QString& activeDevice);
     void modelUnloaded();
     void transcriptionFinished(uint64_t requestId, const QString& text);
     void transcriptionFailed(uint64_t requestId, const QString& error);
