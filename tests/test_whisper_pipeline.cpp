@@ -230,6 +230,15 @@ private slots:
         QVERIFY(!worker.isLoadAborted(10));
     }
 
+    void testVulkanSupportReporting() {
+        WhisperSttClient client;
+#if defined(GGML_USE_VULKAN)
+        QVERIFY(client.isVulkanSupported());
+#else
+        QVERIFY(!client.isVulkanSupported());
+#endif
+    }
+
     void testClientLifecycleAndGracefulShutdown() {
         // Test that WhisperSttClient starts worker thread and tears down gracefully
         for (int i = 0; i < 3; ++i) {
