@@ -8,6 +8,8 @@
 #include <QString>
 #include <QThread>
 
+#include <cstdint>
+
 class WhisperWorker;
 class WhisperModelManager;
 
@@ -65,14 +67,14 @@ signals:
     // Internal signals routed to worker
     void requestLoadModel(const QString& path, bool useGpu);
     void requestUnloadModel();
-    void requestTranscribe(const QByteArray& wavData, const QString& language, const QString& prompt);
-    void requestCancel();
+    void requestTranscribe(uint64_t requestId, const QByteArray& wavData, const QString& language,
+                           const QString& prompt);
 
 private slots:
     void onWorkerModelLoaded(bool success, const QString& error, const QString& activeDevice);
     void onWorkerModelUnloaded();
-    void onWorkerTranscriptionFinished(const QString& text);
-    void onWorkerTranscriptionFailed(const QString& error);
+    void onWorkerTranscriptionFinished(uint64_t requestId, const QString& text);
+    void onWorkerTranscriptionFailed(uint64_t requestId, const QString& error);
 
 private:
     void setLastError(const QString& error);
@@ -83,6 +85,8 @@ private:
     WhisperWorker* m_worker = nullptr;
     QPointer<WhisperModelManager> m_modelManager;
 
+    uint64_t m_nextRequestId = 1;
+    uint64_t m_activeRequestId = 0;
     bool m_modelLoaded = false;
     bool m_busy = false;
     QString m_loadedModelPath;

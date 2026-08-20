@@ -85,6 +85,7 @@ WhisperWorker::~WhisperWorker() {
 }
 
 void WhisperWorker::loadModel(const QString& modelPath, bool useGpu) {
+    cancel();
     if (m_ctx) {
         whisper_free(m_ctx);
         m_ctx = nullptr;
@@ -121,6 +122,7 @@ void WhisperWorker::loadModel(const QString& modelPath, bool useGpu) {
 }
 
 void WhisperWorker::unloadModel() {
+    cancel();
     if (m_ctx) {
         qCDebug(lcSpeech) << "WhisperWorker: Unloading whisper context";
         whisper_free(m_ctx);
@@ -130,28 +132,49 @@ void WhisperWorker::unloadModel() {
     }
 }
 
-void WhisperWorker::cancel() {
-    m_cancelled = true;
+void WhisperWorker::cancel(uint64_t requestId) {
+    m_abortRequested.store(true, std::memory_order_release);
+    if (requestId > 0) {
+        uint64_t current = m_cancelledRequestId.load(std::memory_order_relaxed);
+        while (current < requestId && !m_cancelledRequestId.compare_exchange_weak(
+                                          current, requestId, std::memory_order_release, std::memory_order_relaxed)) { }
+    }
 }
 
-void WhisperWorker::transcribe(const QByteArray& wavData, const QString& language, const QString& prompt) {
-    m_cancelled = false;
+bool WhisperWorker::isAborted(uint64_t requestId) const {
+    if (m_abortRequested.load(std::memory_order_acquire)) {
+        return true;
+    }
+    if (requestId > 0 && requestId <= m_cancelledRequestId.load(std::memory_order_acquire)) {
+        return true;
+    }
+    return false;
+}
+
+void WhisperWorker::transcribe(uint64_t requestId, const QByteArray& wavData, const QString& language,
+                               const QString& prompt) {
+    if (isAborted(requestId)) {
+        qCDebug(lcSpeech) << "WhisperWorker: Transcription request" << requestId << "cancelled prior to processing";
+        return;
+    }
+
+    m_abortRequested.store(false, std::memory_order_release);
 
     if (!m_ctx) {
         qWarning() << "WhisperWorker: Transcribe called but model is not loaded";
-        emit transcriptionFailed(tr("Offline Whisper model is not loaded"));
+        emit transcriptionFailed(requestId, tr("Offline Whisper model is not loaded"));
         return;
     }
 
     std::vector<float> pcmf32;
     if (!extractPcmSamples(wavData, pcmf32)) {
         qWarning() << "WhisperWorker: Invalid or unsupported audio format in WAV payload";
-        emit transcriptionFailed(tr("Invalid audio data: unable to extract 16-bit PCM samples"));
+        emit transcriptionFailed(requestId, tr("Invalid audio data: unable to extract 16-bit PCM samples"));
         return;
     }
 
-    if (m_cancelled) {
-        qCDebug(lcSpeech) << "WhisperWorker: Transcription cancelled prior to inference";
+    if (isAborted(requestId)) {
+        qCDebug(lcSpeech) << "WhisperWorker: Transcription request" << requestId << "cancelled prior to inference";
         return;
     }
 
@@ -178,21 +201,38 @@ void WhisperWorker::transcribe(const QByteArray& wavData, const QString& languag
     wparams.print_realtime = false;
     wparams.print_timestamps = false;
 
+    struct AbortContext {
+        WhisperWorker* worker;
+        uint64_t reqId;
+    } abortCtx {this, requestId};
+
+    wparams.abort_callback = [](void* userData) -> bool {
+        auto* ctx = static_cast<AbortContext*>(userData);
+        return ctx && ctx->worker && ctx->worker->isAborted(ctx->reqId);
+    };
+    wparams.abort_callback_user_data = &abortCtx;
+
+    wparams.encoder_begin_callback = [](whisper_context* /*ctx*/, whisper_state* /*state*/, void* userData) -> bool {
+        auto* ctx = static_cast<AbortContext*>(userData);
+        return !ctx || !ctx->worker || !ctx->worker->isAborted(ctx->reqId);
+    };
+    wparams.encoder_begin_callback_user_data = &abortCtx;
+
     const int sampleCount = static_cast<int>(pcmf32.size());
-    qCDebug(lcSpeech) << "WhisperWorker: Running inference on" << sampleCount << "samples (~"
-                      << (sampleCount / 16000.0f) << "s of audio) with" << wparams.n_threads
+    qCDebug(lcSpeech) << "WhisperWorker: Running inference for request" << requestId << "on" << sampleCount
+                      << "samples (~" << (sampleCount / 16000.0f) << "s of audio) with" << wparams.n_threads
                       << "threads (lang:" << wparams.language << ")";
 
     int ret = whisper_full(m_ctx, wparams, pcmf32.data(), static_cast<int>(pcmf32.size()));
 
-    if (m_cancelled) {
-        qCDebug(lcSpeech) << "WhisperWorker: Transcription cancelled during/after inference";
+    if (isAborted(requestId)) {
+        qCDebug(lcSpeech) << "WhisperWorker: Transcription request" << requestId << "cancelled during/after inference";
         return;
     }
 
     if (ret != 0) {
         qWarning() << "WhisperWorker: whisper_full failed with return code:" << ret;
-        emit transcriptionFailed(tr("Whisper inference failed (code: %1)").arg(ret));
+        emit transcriptionFailed(requestId, tr("Whisper inference failed (code: %1)").arg(ret));
         return;
     }
 
@@ -206,6 +246,7 @@ void WhisperWorker::transcribe(const QByteArray& wavData, const QString& languag
     }
 
     transcription = transcription.trimmed();
-    qCDebug(lcSpeech) << "WhisperWorker: Transcription completed successfully (" << transcription.size() << "chars)";
-    emit transcriptionFinished(transcription);
+    qCDebug(lcSpeech) << "WhisperWorker: Transcription request" << requestId << "completed successfully ("
+                      << transcription.size() << "chars)";
+    emit transcriptionFinished(requestId, transcription);
 }

@@ -23,7 +23,6 @@ WhisperSttClient::WhisperSttClient(QObject* parent)
     connect(this, &WhisperSttClient::requestLoadModel, m_worker, &WhisperWorker::loadModel, Qt::QueuedConnection);
     connect(this, &WhisperSttClient::requestUnloadModel, m_worker, &WhisperWorker::unloadModel, Qt::QueuedConnection);
     connect(this, &WhisperSttClient::requestTranscribe, m_worker, &WhisperWorker::transcribe, Qt::QueuedConnection);
-    connect(this, &WhisperSttClient::requestCancel, m_worker, &WhisperWorker::cancel, Qt::QueuedConnection);
 
     connect(m_worker, &WhisperWorker::modelLoaded, this, &WhisperSttClient::onWorkerModelLoaded, Qt::QueuedConnection);
     connect(m_worker, &WhisperWorker::modelUnloaded, this, &WhisperSttClient::onWorkerModelUnloaded,
@@ -41,7 +40,7 @@ WhisperSttClient::WhisperSttClient(QObject* parent)
 }
 
 WhisperSttClient::~WhisperSttClient() {
-    emit requestCancel();
+    cancel();
     emit requestUnloadModel();
     m_workerThread.quit();
     m_workerThread.wait(2000);
@@ -153,6 +152,7 @@ void WhisperSttClient::activate() {
 }
 
 void WhisperSttClient::deactivate() {
+    cancel();
     unloadModel();
     emit readyChanged();
     emit noticeChanged();
@@ -211,6 +211,7 @@ void WhisperSttClient::loadModel(const QString& customPath) {
 }
 
 void WhisperSttClient::unloadModel() {
+    cancel();
     emit requestUnloadModel();
 }
 
@@ -236,6 +237,8 @@ void WhisperSttClient::transcribe(const QByteArray& wavData) {
         return;
     }
 
+    const uint64_t reqId = m_nextRequestId++;
+    m_activeRequestId = reqId;
     setBusy(true);
     setLastError({});
 
@@ -243,12 +246,16 @@ void WhisperSttClient::transcribe(const QByteArray& wavData) {
     const QString language = settings.value(u"Groq/Language"_s, QString()).toString();
     const QString customPrompt = settings.value(u"Groq/CustomPrompt"_s, QString()).toString();
 
-    emit requestTranscribe(wavData, language, customPrompt);
+    emit requestTranscribe(reqId, wavData, language, customPrompt);
 }
 
 void WhisperSttClient::cancel() {
-    if (m_busy) {
-        emit requestCancel();
+    if (m_busy || m_activeRequestId != 0) {
+        const uint64_t cancelledId = m_activeRequestId;
+        m_activeRequestId = 0;
+        if (m_worker) {
+            m_worker->cancel(cancelledId);
+        }
         setBusy(false);
     }
 }
@@ -279,8 +286,16 @@ void WhisperSttClient::onWorkerModelUnloaded() {
     emit noticeChanged();
 }
 
-void WhisperSttClient::onWorkerTranscriptionFinished(const QString& text) {
+void WhisperSttClient::onWorkerTranscriptionFinished(uint64_t requestId, const QString& text) {
+    if (requestId == 0 || requestId != m_activeRequestId) {
+        qCDebug(lcSpeech) << "WhisperSttClient: Discarding stale transcription finished for request" << requestId
+                          << "(active request:" << m_activeRequestId << ")";
+        return;
+    }
+
+    m_activeRequestId = 0;
     setBusy(false);
+
     if (text.isEmpty()) {
         const QString err = tr("Whisper returned empty transcription");
         setLastError(err);
@@ -292,7 +307,14 @@ void WhisperSttClient::onWorkerTranscriptionFinished(const QString& text) {
     emit transcriptionReady(text);
 }
 
-void WhisperSttClient::onWorkerTranscriptionFailed(const QString& error) {
+void WhisperSttClient::onWorkerTranscriptionFailed(uint64_t requestId, const QString& error) {
+    if (requestId == 0 || requestId != m_activeRequestId) {
+        qCDebug(lcSpeech) << "WhisperSttClient: Discarding stale transcription failure for request" << requestId
+                          << "(active request:" << m_activeRequestId << ")";
+        return;
+    }
+
+    m_activeRequestId = 0;
     setBusy(false);
     setLastError(error);
     emit errorOccurred(error);

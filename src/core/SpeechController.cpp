@@ -197,6 +197,9 @@ SpeechController::TranscriptionBackend SpeechController::activeBackend() const {
 
 void SpeechController::setActiveBackend(TranscriptionBackend backend) {
     if (m_activeBackend != backend) {
+        if (isBusy()) {
+            cancelDictation();
+        }
         if (auto* oldClient = activeSttClient()) {
             oldClient->deactivate();
         }
@@ -650,6 +653,12 @@ void SpeechController::onRecordingFinished(const QByteArray& wavData) {
 }
 
 void SpeechController::onTranscriptionReady(const QString& text) {
+    if (m_state != DictationState::Transcribing || (sender() && sender() != activeSttClient())) {
+        qCDebug(lcSpeech) << "SpeechController: Ignoring transcriptionReady: not in Transcribing state or sender is "
+                             "not active client";
+        return;
+    }
+
     qCDebug(lcSpeech) << "SpeechController: Transcription received:" << text;
 
     if (text.trimmed().isEmpty()) {
@@ -697,6 +706,12 @@ void SpeechController::onLlmError(const QString& error, const QString& fallbackR
 }
 
 void SpeechController::onSttError(const QString& error) {
+    if (m_state != DictationState::Transcribing || (sender() && sender() != activeSttClient())) {
+        qCDebug(lcSpeech)
+            << "SpeechController: Ignoring STT error: not in Transcribing state or sender is not active client";
+        return;
+    }
+
     qWarning() << "SpeechController: STT Error:" << error;
     setLastError(error);
     setStatusMessage(error);
