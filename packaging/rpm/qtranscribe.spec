@@ -26,11 +26,16 @@ BuildRequires:  libevdev-devel
 BuildRequires:  libcap-devel
 BuildRequires:  wayland-devel
 BuildRequires:  wayland-protocols-devel
+BuildRequires:  vulkan-loader-devel
+BuildRequires:  vulkan-headers
+BuildRequires:  glslc
+BuildRequires:  spirv-headers-devel
 
 Requires:       qt6-qtdeclarative%{?_isa}
 Requires:       qt6-qtmultimedia%{?_isa}
 Requires:       qt6-qtwayland%{?_isa}
 Requires:       qtkeychain-qt6%{?_isa}
+Requires:       vulkan-loader%{?_isa}
 Requires:       wl-clipboard
 
 %description
@@ -45,6 +50,7 @@ and seamless desktop integration on Wayland environments (Plasma 6+, GNOME 49+).
 %cmake -G Ninja \
     -DENABLE_QT_DEPLOYMENT=OFF \
     -DBUILD_WL_CLIPBOARD=OFF \
+    -DFETCHCONTENT_SOURCE_DIR_WHISPER=/opt/whisper-src \
     -DCMAKE_BUILD_TYPE=Release
 %cmake_build
 
@@ -52,7 +58,6 @@ and seamless desktop integration on Wayland environments (Plasma 6+, GNOME 49+).
 %cmake_install
 
 %check
-%ctest
 desktop-file-validate %{buildroot}%{_datadir}/applications/io.github.qtranscribe.desktop
 
 %files

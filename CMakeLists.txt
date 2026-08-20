@@ -54,6 +54,7 @@ endif()
 set(WHISPER_BUILD_EXAMPLES OFF CACHE BOOL "whisper: disable examples" FORCE)
 set(WHISPER_BUILD_TESTS OFF CACHE BOOL "whisper: disable tests" FORCE)
 set(WHISPER_BUILD_SERVER OFF CACHE BOOL "whisper: disable server" FORCE)
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "whisper: build static libraries" FORCE)
 
 FetchContent_Declare(
     whisper
@@ -61,7 +62,11 @@ FetchContent_Declare(
     GIT_TAG        v1.9.3
     GIT_SHALLOW    TRUE
 )
-FetchContent_MakeAvailable(whisper)
+FetchContent_GetProperties(whisper)
+if(NOT whisper_POPULATED)
+    FetchContent_Populate(whisper)
+    add_subdirectory(${whisper_SOURCE_DIR} ${whisper_BINARY_DIR} EXCLUDE_FROM_ALL)
+endif()
 
 add_subdirectory(src/core)
 add_subdirectory(src/ui)
