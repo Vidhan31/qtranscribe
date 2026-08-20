@@ -125,9 +125,3 @@ target_precompile_headers(qtranscribe_ui
         <QObject>
         <QString>
 )
-
-add_custom_command(TARGET qtranscribe_ui POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E rm -f "${CMAKE_SOURCE_DIR}/QTranscribe"
-    COMMAND ${CMAKE_COMMAND} -E create_symlink "${CMAKE_BINARY_DIR}/QTranscribe" "${CMAKE_SOURCE_DIR}/QTranscribe"
-    COMMENT "Creating QTranscribe module symlink for editor and qmllint tooling"
-)

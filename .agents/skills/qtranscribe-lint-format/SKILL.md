@@ -20,7 +20,7 @@ Commands and workflows for formatting C++ and QML files, linting QML components,
 | **Pre-Commit (All)** | Whole Project | `pre-commit run --all-files` | Runs all formatters, linters, and hygiene checks on all files |
 | **CMake: Format All** | C++ & QML | `cmake --build build --target format` | Formats all C++ and QML files inplace via CMake |
 | **CMake: Lint QML** | QML Files | `cmake --build build --target all_qmllint` | Lints all QML files via CMake build target |
-| **Direct: QML Lint** | QML Files | `qmllint-qt6 -I build $(find src/ui -name "*.qml")` | Direct `qmllint` invocation with module search path |
+| **Direct: QML Lint** | QML Files | `qmllint-qt6 -I build -I build-release -I build-relwithdebinfo $(find src/ui -name "*.qml")` | Direct `qmllint` invocation with module search path |
 | **Direct: QML Format** | QML Files | `qmlformat --inplace $(find src -name "*.qml")` | Direct `qmlformat` invocation |
 
 ---
