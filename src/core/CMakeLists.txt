@@ -64,8 +64,8 @@ target_link_libraries(qtranscribe_core
         Qt6Keychain::Qt6Keychain
 )
 
-if(TARGET Vulkan::Vulkan)
-    target_link_libraries(qtranscribe_core PUBLIC Vulkan::Vulkan)
+if(GGML_VULKAN AND TARGET Vulkan::Vulkan)
+    target_link_libraries(qtranscribe_core PRIVATE Vulkan::Vulkan)
 endif()
 
 target_compile_definitions(qtranscribe_core
