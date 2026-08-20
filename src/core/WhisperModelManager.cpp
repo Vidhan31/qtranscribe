@@ -369,14 +369,24 @@ bool WhisperModelManager::deleteModel(const QString& modelId) {
     }
 
     const auto& model = m_models[idx];
+    bool failed = false;
     const QString primaryPath = modelsDirectory() + u"/"_s + model.fileName;
-    if (QFile::exists(primaryPath)) {
-        QFile::remove(primaryPath);
+    if (QFile::exists(primaryPath) && !QFile::remove(primaryPath)) {
+        failed = true;
     }
     const QString appData = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     const QString fallbackPath = appData + u"/models/"_s + model.fileName;
-    if (QFile::exists(fallbackPath)) {
-        QFile::remove(fallbackPath);
+    if (QFile::exists(fallbackPath) && !QFile::remove(fallbackPath)) {
+        failed = true;
+    }
+
+    if (failed) {
+        setLastError(tr("Failed to delete model file for '%1'.").arg(model.name));
+        scanInstalledModels();
+        checkDiskSpace();
+        emit modelStatusChanged();
+        emit selectedModelChanged();
+        return false;
     }
 
     m_models[idx].isInstalled = false;
