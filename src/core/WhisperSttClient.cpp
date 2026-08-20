@@ -8,6 +8,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QSettings>
 #include <QStandardPaths>
 
 using namespace Qt::StringLiterals;
@@ -143,9 +144,53 @@ bool WhisperSttClient::isBusy() const {
     return m_busy;
 }
 
+void WhisperSttClient::activate() {
+    if (isModelInstalled() && !m_modelLoaded) {
+        loadModel();
+    }
+    emit readyChanged();
+    emit noticeChanged();
+}
+
+void WhisperSttClient::deactivate() {
+    unloadModel();
+    emit readyChanged();
+    emit noticeChanged();
+}
+
+bool WhisperSttClient::hasNotice() const {
+    return !isModelInstalled() || !m_modelLoaded;
+}
+
+QVariantMap WhisperSttClient::notice() const {
+    QVariantMap noticeMap;
+    if (!isModelInstalled()) {
+        noticeMap[u"hasNotice"_s] = true;
+        noticeMap[u"type"_s] = u"warning"_s;
+        noticeMap[u"title"_s] = tr("Offline Whisper Model Missing");
+        noticeMap[u"message"_s] = tr("Download %1 to start offline transcription.").arg(modelFileName());
+        noticeMap[u"actionText"_s] = tr("Offline Settings");
+        noticeMap[u"actionId"_s] = u"openOfflineSettings"_s;
+        return noticeMap;
+    }
+
+    if (!m_modelLoaded) {
+        noticeMap[u"hasNotice"_s] = true;
+        noticeMap[u"type"_s] = u"info"_s;
+        noticeMap[u"title"_s] = tr("Loading Whisper Model");
+        noticeMap[u"message"_s] = tr("Loading offline speech recognition model into memory…");
+        noticeMap[u"actionText"_s] = tr("Offline Settings");
+        noticeMap[u"actionId"_s] = u"openOfflineSettings"_s;
+        return noticeMap;
+    }
+
+    return noticeMap;
+}
+
 void WhisperSttClient::checkModelStatus() {
     emit modelStatusChanged();
     emit readyChanged();
+    emit noticeChanged();
 }
 
 void WhisperSttClient::loadModel(const QString& customPath) {
@@ -156,6 +201,7 @@ void WhisperSttClient::loadModel(const QString& customPath) {
         m_loadedModelPath.clear();
         emit modelStatusChanged();
         emit readyChanged();
+        emit noticeChanged();
         return;
     }
 
@@ -192,7 +238,12 @@ void WhisperSttClient::transcribe(const QByteArray& wavData) {
 
     setBusy(true);
     setLastError({});
-    emit requestTranscribe(wavData);
+
+    QSettings settings;
+    const QString language = settings.value(u"Groq/Language"_s, QString()).toString();
+    const QString customPrompt = settings.value(u"Groq/CustomPrompt"_s, QString()).toString();
+
+    emit requestTranscribe(wavData, language, customPrompt);
 }
 
 void WhisperSttClient::cancel() {
@@ -215,6 +266,7 @@ void WhisperSttClient::onWorkerModelLoaded(bool success, const QString& error, c
     emit modelStatusChanged();
     emit computeDeviceChanged();
     emit readyChanged();
+    emit noticeChanged();
 }
 
 void WhisperSttClient::onWorkerModelUnloaded() {
@@ -224,6 +276,7 @@ void WhisperSttClient::onWorkerModelUnloaded() {
     emit modelStatusChanged();
     emit computeDeviceChanged();
     emit readyChanged();
+    emit noticeChanged();
 }
 
 void WhisperSttClient::onWorkerTranscriptionFinished(const QString& text) {

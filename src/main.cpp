@@ -122,11 +122,10 @@ int main(int argc, char* argv[]) {
         tracker->setApiClient(api);
 
     if (controller) {
-        controller->setApiClient(api);
         controller->setShortcutManager(shortcut);
         controller->setAudioRecorder(recorder);
-        controller->setSttClient(stt);
-        controller->setWhisperSttClient(whisperStt);
+        controller->registerSttClient(SpeechController::TranscriptionBackend::Groq, stt);
+        controller->registerSttClient(SpeechController::TranscriptionBackend::WhisperCpp, whisperStt);
         controller->setLlmClient(llm);
         controller->setTextInjector(injector);
         controller->setHistoryModel(history);

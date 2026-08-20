@@ -58,6 +58,33 @@ GroqApiClient* GroqSttClient::apiClient() const {
 
 void GroqSttClient::onApiKeySetChanged() {
     emit readyChanged();
+    emit noticeChanged();
+}
+
+void GroqSttClient::activate() {
+    emit readyChanged();
+    emit noticeChanged();
+}
+
+void GroqSttClient::deactivate() {
+    cancel();
+}
+
+bool GroqSttClient::hasNotice() const {
+    return !m_apiClient || !m_apiClient->apiKeySet();
+}
+
+QVariantMap GroqSttClient::notice() const {
+    QVariantMap noticeMap;
+    if (!m_apiClient || !m_apiClient->apiKeySet()) {
+        noticeMap[u"hasNotice"_s] = true;
+        noticeMap[u"type"_s] = u"warning"_s;
+        noticeMap[u"title"_s] = tr("Groq API Key Required");
+        noticeMap[u"message"_s] = tr("Configure your API key in Settings to begin speech transcription.");
+        noticeMap[u"actionText"_s] = tr("Configure API Key");
+        noticeMap[u"actionId"_s] = u"openApiKeySettings"_s;
+    }
+    return noticeMap;
 }
 
 bool GroqSttClient::isReady() const {

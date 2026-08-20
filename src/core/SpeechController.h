@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QHash>
 #include <QObject>
 #include <QQmlEngine>
 #include <QString>
@@ -60,11 +61,12 @@ public:
     explicit SpeechController(QObject* parent = nullptr);
     ~SpeechController() override = default;
 
+    void registerSttClient(TranscriptionBackend backend, AbstractSttClient* client);
+    void setSttClient(GroqSttClient* sttClient);
+    void setWhisperSttClient(WhisperSttClient* whisperClient);
     void setApiClient(GroqApiClient* api);
     void setShortcutManager(GlobalShortcutManager* mgr);
     void setAudioRecorder(AudioRecorder* recorder);
-    void setSttClient(GroqSttClient* sttClient);
-    void setWhisperSttClient(WhisperSttClient* whisperClient);
     void setLlmClient(GroqLlmClient* llmClient);
     void setTextInjector(TextInjectorClient* injector);
     void setHistoryModel(TranscriptionModel* model);
@@ -163,8 +165,7 @@ private:
     GroqApiClient* m_apiClient = nullptr;
     GlobalShortcutManager* m_shortcutMgr = nullptr;
     AudioRecorder* m_recorder = nullptr;
-    GroqSttClient* m_sttClient = nullptr;
-    WhisperSttClient* m_whisperClient = nullptr;
+    QHash<TranscriptionBackend, AbstractSttClient*> m_sttClients;
     GroqLlmClient* m_llmClient = nullptr;
     TextInjectorClient* m_injector = nullptr;
     TranscriptionModel* m_historyModel = nullptr;

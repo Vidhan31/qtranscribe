@@ -18,7 +18,7 @@ public:
 public slots:
     void loadModel(const QString& modelPath, bool useGpu = true);
     void unloadModel();
-    void transcribe(const QByteArray& wavData);
+    void transcribe(const QByteArray& wavData, const QString& language = QString(), const QString& prompt = QString());
     void cancel();
 
 signals:

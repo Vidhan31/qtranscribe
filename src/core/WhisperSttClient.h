@@ -46,6 +46,11 @@ public:
     bool isReady() const override;
     bool isBusy() const override;
 
+    void activate() override;
+    void deactivate() override;
+    bool hasNotice() const override;
+    QVariantMap notice() const override;
+
     Q_INVOKABLE void transcribe(const QByteArray& wavData) override;
     Q_INVOKABLE void cancel() override;
     Q_INVOKABLE void loadModel(const QString& customPath = QString());
@@ -60,7 +65,7 @@ signals:
     // Internal signals routed to worker
     void requestLoadModel(const QString& path, bool useGpu);
     void requestUnloadModel();
-    void requestTranscribe(const QByteArray& wavData);
+    void requestTranscribe(const QByteArray& wavData, const QString& language, const QString& prompt);
     void requestCancel();
 
 private slots:

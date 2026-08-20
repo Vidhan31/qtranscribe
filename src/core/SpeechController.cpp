@@ -112,54 +112,43 @@ void SpeechController::setAudioRecorder(AudioRecorder* recorder) {
     updatePresenterState();
 }
 
-void SpeechController::setSttClient(GroqSttClient* sttClient) {
-    if (m_sttClient == sttClient) {
+void SpeechController::registerSttClient(TranscriptionBackend backend, AbstractSttClient* client) {
+    if (m_sttClients.value(backend) == client) {
         return;
     }
-    if (m_sttClient) {
-        disconnect(m_sttClient, &GroqSttClient::transcriptionReady, this, &SpeechController::onTranscriptionReady);
-        disconnect(m_sttClient, &GroqSttClient::errorOccurred, this, &SpeechController::onSttError);
-        disconnect(m_sttClient, &GroqSttClient::readyChanged, this, &SpeechController::updatePresenterState);
-        disconnect(m_sttClient, &GroqSttClient::errorCategoryChanged, this, &SpeechController::updatePresenterState);
-        disconnect(m_sttClient, &GroqSttClient::retrySecondsRemainingChanged, this,
-                   &SpeechController::updatePresenterState);
+
+    if (auto* old = m_sttClients.value(backend)) {
+        disconnect(old, &AbstractSttClient::transcriptionReady, this, &SpeechController::onTranscriptionReady);
+        disconnect(old, &AbstractSttClient::errorOccurred, this, &SpeechController::onSttError);
+        disconnect(old, &AbstractSttClient::readyChanged, this, &SpeechController::updatePresenterState);
+        disconnect(old, &AbstractSttClient::busyChanged, this, &SpeechController::updatePresenterState);
+        disconnect(old, &AbstractSttClient::noticeChanged, this, &SpeechController::updatePresenterState);
     }
-    m_sttClient = sttClient;
-    if (m_sttClient) {
-        connect(m_sttClient, &GroqSttClient::transcriptionReady, this, &SpeechController::onTranscriptionReady);
-        connect(m_sttClient, &GroqSttClient::errorOccurred, this, &SpeechController::onSttError);
-        connect(m_sttClient, &GroqSttClient::readyChanged, this, &SpeechController::updatePresenterState);
-        connect(m_sttClient, &GroqSttClient::errorCategoryChanged, this, &SpeechController::updatePresenterState);
-        connect(m_sttClient, &GroqSttClient::retrySecondsRemainingChanged, this,
-                &SpeechController::updatePresenterState);
+
+    if (client) {
+        m_sttClients.insert(backend, client);
+        connect(client, &AbstractSttClient::transcriptionReady, this, &SpeechController::onTranscriptionReady);
+        connect(client, &AbstractSttClient::errorOccurred, this, &SpeechController::onSttError);
+        connect(client, &AbstractSttClient::readyChanged, this, &SpeechController::updatePresenterState);
+        connect(client, &AbstractSttClient::busyChanged, this, &SpeechController::updatePresenterState);
+        connect(client, &AbstractSttClient::noticeChanged, this, &SpeechController::updatePresenterState);
+
+        if (backend == m_activeBackend && m_initialized) {
+            client->activate();
+        }
+    } else {
+        m_sttClients.remove(backend);
     }
+
     updatePresenterState();
 }
 
-void SpeechController::setWhisperSttClient(WhisperSttClient* whisperClient) {
-    if (m_whisperClient == whisperClient) {
-        return;
-    }
-    if (m_whisperClient) {
-        disconnect(m_whisperClient, &WhisperSttClient::transcriptionReady, this,
-                   &SpeechController::onTranscriptionReady);
-        disconnect(m_whisperClient, &WhisperSttClient::errorOccurred, this, &SpeechController::onSttError);
-        disconnect(m_whisperClient, &WhisperSttClient::readyChanged, this, &SpeechController::updatePresenterState);
-        disconnect(m_whisperClient, &WhisperSttClient::modelStatusChanged, this,
-                   &SpeechController::updatePresenterState);
-    }
-    m_whisperClient = whisperClient;
-    if (m_whisperClient) {
-        connect(m_whisperClient, &WhisperSttClient::transcriptionReady, this, &SpeechController::onTranscriptionReady);
-        connect(m_whisperClient, &WhisperSttClient::errorOccurred, this, &SpeechController::onSttError);
-        connect(m_whisperClient, &WhisperSttClient::readyChanged, this, &SpeechController::updatePresenterState);
-        connect(m_whisperClient, &WhisperSttClient::modelStatusChanged, this, &SpeechController::updatePresenterState);
+void SpeechController::setSttClient(GroqSttClient* sttClient) {
+    registerSttClient(TranscriptionBackend::Groq, sttClient);
+}
 
-        if (m_activeBackend == TranscriptionBackend::WhisperCpp) {
-            m_whisperClient->loadModel();
-        }
-    }
-    updatePresenterState();
+void SpeechController::setWhisperSttClient(WhisperSttClient* whisperClient) {
+    registerSttClient(TranscriptionBackend::WhisperCpp, whisperClient);
 }
 
 void SpeechController::setLlmClient(GroqLlmClient* llmClient) {
@@ -208,19 +197,17 @@ SpeechController::TranscriptionBackend SpeechController::activeBackend() const {
 
 void SpeechController::setActiveBackend(TranscriptionBackend backend) {
     if (m_activeBackend != backend) {
+        if (auto* oldClient = activeSttClient()) {
+            oldClient->deactivate();
+        }
+
         m_activeBackend = backend;
         QSettings settings;
         settings.setValue(u"Speech/Backend"_s,
                           m_activeBackend == TranscriptionBackend::WhisperCpp ? u"WhisperCpp"_s : u"Groq"_s);
 
-        if (m_activeBackend == TranscriptionBackend::WhisperCpp) {
-            if (m_whisperClient) {
-                m_whisperClient->loadModel();
-            }
-        } else {
-            if (m_whisperClient) {
-                m_whisperClient->unloadModel();
-            }
+        if (auto* newClient = activeSttClient()) {
+            newClient->activate();
         }
 
         emit activeBackendChanged();
@@ -229,10 +216,7 @@ void SpeechController::setActiveBackend(TranscriptionBackend backend) {
 }
 
 AbstractSttClient* SpeechController::activeSttClient() const {
-    if (m_activeBackend == TranscriptionBackend::WhisperCpp) {
-        return m_whisperClient;
-    }
-    return m_sttClient;
+    return m_sttClients.value(m_activeBackend, nullptr);
 }
 
 void SpeechController::initialize() {
@@ -240,8 +224,11 @@ void SpeechController::initialize() {
         return;
     }
     m_initialized = true;
+    if (auto* client = activeSttClient()) {
+        client->activate();
+    }
     updatePresenterState();
-    qCDebug(lcSpeech) << "SpeechController: pipeline initialized with injected dependencies";
+    qCDebug(lcSpeech) << "SpeechController: pipeline initialized with registered STT engines";
 }
 
 void SpeechController::updatePresenterState() {
@@ -304,41 +291,14 @@ void SpeechController::setSoundEnabled(bool enabled) {
 }
 
 QVariantMap SpeechController::activeNotice() const {
-    QVariantMap notice;
-
-    if (m_activeBackend == TranscriptionBackend::Groq) {
-        if (m_apiClient && !m_apiClient->apiKeySet()) {
-            notice[u"hasNotice"_s] = true;
-            notice[u"type"_s] = u"warning"_s;
-            notice[u"title"_s] = tr("Groq API Key Required");
-            notice[u"message"_s] = tr("Configure your API key in Settings to begin speech transcription.");
-            notice[u"actionText"_s] = tr("Configure API Key");
-            notice[u"actionId"_s] = u"openApiKeySettings"_s;
-            return notice;
-        }
-    } else if (m_activeBackend == TranscriptionBackend::WhisperCpp) {
-        if (m_whisperClient && !m_whisperClient->isModelInstalled()) {
-            notice[u"hasNotice"_s] = true;
-            notice[u"type"_s] = u"warning"_s;
-            notice[u"title"_s] = tr("Offline Whisper Model Missing");
-            notice[u"message"_s] = tr("Download ggml-tiny.en.bin to start offline transcription.");
-            notice[u"actionText"_s] = tr("Offline Settings");
-            notice[u"actionId"_s] = u"openOfflineSettings"_s;
-            return notice;
-        }
-
-        if (m_whisperClient && !m_whisperClient->isModelLoaded()) {
-            notice[u"hasNotice"_s] = true;
-            notice[u"type"_s] = u"info"_s;
-            notice[u"title"_s] = tr("Loading Whisper Model");
-            notice[u"message"_s] = tr("Loading offline speech recognition model into memory…");
-            notice[u"actionText"_s] = tr("Offline Settings");
-            notice[u"actionId"_s] = u"openOfflineSettings"_s;
-            return notice;
+    if (auto* stt = activeSttClient()) {
+        if (stt->hasNotice()) {
+            return stt->notice();
         }
     }
 
     if (m_injector && m_injector->hasFatalError()) {
+        QVariantMap notice;
         notice[u"hasNotice"_s] = true;
         notice[u"type"_s] = u"danger"_s;
         notice[u"title"_s] = tr("Direct Typing Service Stopped");
@@ -354,6 +314,7 @@ QVariantMap SpeechController::activeNotice() const {
     }
 
     if (m_recorder && !m_recorder->hasAudioInputDevice()) {
+        QVariantMap notice;
         notice[u"hasNotice"_s] = true;
         notice[u"type"_s] = u"warning"_s;
         notice[u"title"_s] = tr("No Microphone Detected");
@@ -364,6 +325,7 @@ QVariantMap SpeechController::activeNotice() const {
     }
 
     if (m_showMaxDurationNotice) {
+        QVariantMap notice;
         notice[u"hasNotice"_s] = true;
         notice[u"type"_s] = u"info"_s;
         notice[u"title"_s] = tr("Maximum Duration (5 min) Reached");
@@ -373,23 +335,24 @@ QVariantMap SpeechController::activeNotice() const {
     }
 
     if (m_state == DictationState::Error) {
+        QVariantMap notice;
         notice[u"hasNotice"_s] = true;
 
-        if (m_activeBackend == TranscriptionBackend::Groq && m_sttClient) {
-            const auto errCat = m_sttClient->errorCategory();
+        if (auto* groq = qobject_cast<GroqSttClient*>(activeSttClient())) {
+            const auto errCat = groq->errorCategory();
 
-            if (errCat == GroqSttClient::ErrorCategory::RateLimited && m_sttClient->retrySecondsRemaining() > 0) {
+            if (errCat == GroqSttClient::ErrorCategory::RateLimited && groq->retrySecondsRemaining() > 0) {
                 notice[u"type"_s] = u"warning"_s;
                 notice[u"title"_s] = tr("Rate Limit Exceeded");
-                notice[u"message"_s] = tr("Auto-retrying in %1s…").arg(m_sttClient->retrySecondsRemaining());
+                notice[u"message"_s] = tr("Auto-retrying in %1s…").arg(groq->retrySecondsRemaining());
                 notice[u"actionText"_s] = tr("Dismiss");
                 notice[u"actionId"_s] = u"dismissError"_s;
             } else if (errCat == GroqSttClient::ErrorCategory::InvalidApiKey) {
                 notice[u"type"_s] = u"warning"_s;
                 notice[u"title"_s] = tr("Invalid API Key");
-                notice[u"message"_s] = m_sttClient->lastError().isEmpty()
+                notice[u"message"_s] = groq->lastError().isEmpty()
                                            ? tr("Authentication failed. Please verify your Groq API key.")
-                                           : m_sttClient->lastError();
+                                           : groq->lastError();
                 notice[u"actionText"_s] = tr("Configure API Key");
                 notice[u"actionId"_s] = u"openApiKeySettings"_s;
                 notice[u"secondaryActionText"_s] = tr("Dismiss");
@@ -397,10 +360,10 @@ QVariantMap SpeechController::activeNotice() const {
             } else {
                 notice[u"type"_s] = u"danger"_s;
                 notice[u"title"_s] = tr("Transcription Failed");
-                notice[u"message"_s] = m_lastError.isEmpty() ? (m_sttClient->lastError().isEmpty()
-                                                                    ? tr("An error occurred during transcription.")
-                                                                    : m_sttClient->lastError())
-                                                             : m_lastError;
+                notice[u"message"_s] =
+                    m_lastError.isEmpty() ? (groq->lastError().isEmpty() ? tr("An error occurred during transcription.")
+                                                                         : groq->lastError())
+                                          : m_lastError;
                 notice[u"actionText"_s] = tr("Retry Transcription");
                 notice[u"actionId"_s] = u"retryStt"_s;
                 notice[u"secondaryActionText"_s] = tr("Dismiss");
@@ -417,8 +380,7 @@ QVariantMap SpeechController::activeNotice() const {
         return notice;
     }
 
-    notice[u"hasNotice"_s] = false;
-    return notice;
+    return {};
 }
 
 bool SpeechController::hasActiveNotice() const {
@@ -618,12 +580,14 @@ void SpeechController::cancelDictation() {
 }
 
 void SpeechController::retryTranscription() {
-    if (m_activeBackend == TranscriptionBackend::Groq && m_sttClient && !isBusy()) {
-        setLastError({});
-        setDictationState(DictationState::Transcribing);
-        setStatusMessage(tr("Retrying transcription…"));
-        m_sttClient->retryLast();
-        updatePresenterState();
+    if (auto* groq = qobject_cast<GroqSttClient*>(activeSttClient())) {
+        if (!isBusy()) {
+            setLastError({});
+            setDictationState(DictationState::Transcribing);
+            setStatusMessage(tr("Retrying transcription…"));
+            groq->retryLast();
+            updatePresenterState();
+        }
     }
 }
 
