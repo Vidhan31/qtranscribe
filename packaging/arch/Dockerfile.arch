@@ -105,8 +105,8 @@ RUN set -eux; \
     echo "============================================================"; \
     test -x /usr/bin/qtranscribe; \
     test -x /usr/bin/keyinjectord; \
-    test -f /usr/share/applications/qtranscribe.desktop; \
-    desktop-file-validate /usr/share/applications/qtranscribe.desktop; \
+    test -f /usr/share/applications/io.github.qtranscribe.desktop; \
+    desktop-file-validate /usr/share/applications/io.github.qtranscribe.desktop; \
     getcap /usr/bin/keyinjectord | grep -E 'cap_dac_override[+=]p'
 
 # ---------------------------------------------------------------------------

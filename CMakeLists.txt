@@ -151,12 +151,16 @@ else()
 endif()
 
 install(
-    FILES assets/qtranscribe.desktop
+    FILES assets/io.github.qtranscribe.desktop
     DESTINATION ${DESKTOP_AND_ICON_PREFIX}/applications
 )
 
 set(APP_ICON_SIZES 16 24 32 64 128 256 512)
 foreach(SIZE ${APP_ICON_SIZES})
+    install(FILES "assets/speech-to-text-${SIZE}.png"
+        DESTINATION "${DESKTOP_AND_ICON_PREFIX}/icons/hicolor/${SIZE}x${SIZE}/apps"
+        RENAME "io.github.qtranscribe.png"
+    )
     install(FILES "assets/speech-to-text-${SIZE}.png"
         DESTINATION "${DESKTOP_AND_ICON_PREFIX}/icons/hicolor/${SIZE}x${SIZE}/apps"
         RENAME "qtranscribe.png"

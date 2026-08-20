@@ -52,7 +52,7 @@ build() {
 
 check() {
   ctest --test-dir build --output-on-failure --parallel "$(nproc)"
-  desktop-file-validate "${srcdir}/${pkgname}-${pkgver}/assets/qtranscribe.desktop"
+  desktop-file-validate "${srcdir}/${pkgname}-${pkgver}/assets/io.github.qtranscribe.desktop"
 }
 
 package() {

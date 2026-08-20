@@ -2,8 +2,8 @@
 Type=Application
 Name=QTranscribe
 Exec=qtranscribe
-Icon=qtranscribe
+Icon=io.github.qtranscribe
 Categories=Utility;
 Terminal=false
-StartupWMClass=qtranscribe
+StartupWMClass=io.github.qtranscribe
 Comment=Speech to Text Application

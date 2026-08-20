@@ -41,7 +41,7 @@ int main(int argc, char* argv[]) {
     app.setApplicationVersion(QStringLiteral(QTRANSCRIBE_VERSION));
     app.setOrganizationName(u"QTranscribe"_s);
     app.setOrganizationDomain(u"io.github.qtranscribe"_s);
-    app.setDesktopFileName(u"qtranscribe"_s);
+    app.setDesktopFileName(u"io.github.qtranscribe"_s);
     app.setQuitOnLastWindowClosed(false);
 
     QCommandLineParser parser;
