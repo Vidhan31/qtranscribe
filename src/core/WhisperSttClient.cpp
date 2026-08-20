@@ -5,7 +5,7 @@
 #include "WhisperModelManager.h"
 #include "WhisperWorker.h"
 
-#include <QDeadlineTimer>
+#include <QCoreApplication>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -19,8 +19,6 @@ WhisperSttClient::WhisperSttClient(QObject* parent)
     , m_worker(new WhisperWorker()) {
     m_worker->moveToThread(&m_workerThread);
 
-    connect(&m_workerThread, &QThread::finished, m_worker, &QObject::deleteLater);
-
     connect(this, &WhisperSttClient::requestLoadModel, m_worker, &WhisperWorker::loadModel, Qt::QueuedConnection);
     connect(this, &WhisperSttClient::requestUnloadModel, m_worker, &WhisperWorker::unloadModel, Qt::QueuedConnection);
     connect(this, &WhisperSttClient::requestTranscribe, m_worker, &WhisperWorker::transcribe, Qt::QueuedConnection);
@@ -32,6 +30,15 @@ WhisperSttClient::WhisperSttClient(QObject* parent)
             Qt::QueuedConnection);
     connect(m_worker, &WhisperWorker::transcriptionFailed, this, &WhisperSttClient::onWorkerTranscriptionFailed,
             Qt::QueuedConnection);
+
+    if (auto* app = QCoreApplication::instance()) {
+        connect(app, &QCoreApplication::aboutToQuit, this, [this]() {
+            cancel();
+            if (m_worker) {
+                m_worker->cancel(0);
+            }
+        });
+    }
 
     m_workerThread.setObjectName(u"WhisperInferenceThread"_s);
     m_workerThread.start();
@@ -45,13 +52,13 @@ WhisperSttClient::~WhisperSttClient() {
     if (m_worker) {
         m_worker->cancel(0);
     }
-    m_workerThread.quit();
     m_workerThread.requestInterruption();
-    if (!m_workerThread.wait(QDeadlineTimer(2000))) {
-        qCWarning(lcSpeech) << "WhisperSttClient: Worker thread did not exit within 2s deadline, terminating thread";
-        m_workerThread.terminate();
-        m_workerThread.wait(1000);
+    m_workerThread.quit();
+    if (!m_workerThread.wait()) {
+        qCWarning(lcSpeech) << "WhisperSttClient: Failed waiting for worker thread to exit";
     }
+    delete m_worker;
+    m_worker = nullptr;
 }
 
 void WhisperSttClient::setModelManager(WhisperModelManager* manager) {
@@ -226,6 +233,10 @@ void WhisperSttClient::loadModel(const QString& customPath) {
     const uint64_t loadId = m_nextLoadRequestId++;
     m_activeLoadRequestId = loadId;
 
+    if (m_worker) {
+        m_worker->cancel(0);
+    }
+
     if (!QFile::exists(path)) {
         setLastError(tr("Whisper model file not found at %1. Please download it in Model Settings.").arg(path));
         m_modelLoaded = false;
@@ -247,6 +258,9 @@ void WhisperSttClient::unloadModel() {
     m_loadedModelPath.clear();
     m_computeDevice.clear();
     cancel();
+    if (m_worker) {
+        m_worker->cancel(0);
+    }
     emit requestUnloadModel();
 }
 

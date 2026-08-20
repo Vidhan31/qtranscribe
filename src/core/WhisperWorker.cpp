@@ -9,6 +9,8 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <fstream>
+#include <stdexcept>
 #include <vector>
 
 #include <whisper.h>
@@ -23,6 +25,16 @@
 #include "miniaudio.h"
 
 using namespace Qt::StringLiterals;
+
+namespace {
+
+struct AbortableModelLoaderContext {
+    std::ifstream file;
+    const WhisperWorker* worker = nullptr;
+    uint64_t loadRequestId = 0;
+};
+
+} // namespace
 
 bool WhisperWorker::extractPcmSamples(const QByteArray& wavData, std::vector<float>& outPcmf32) {
     if (wavData.size() < 12) {
@@ -166,10 +178,17 @@ WhisperWorker::~WhisperWorker() {
 }
 
 void WhisperWorker::loadModel(uint64_t loadRequestId, const QString& modelPath, bool useGpu) {
-    cancel();
+    if (isAborted(loadRequestId)) {
+        qCDebug(lcSpeech) << "WhisperWorker: Model load request" << loadRequestId << "cancelled prior to processing";
+        return;
+    }
+
+    m_abortRequested.store(false, std::memory_order_release);
+
     if (m_ctx) {
         whisper_free(m_ctx);
         m_ctx = nullptr;
+        m_activeDevice.clear();
     }
 
     if (!QFile::exists(modelPath)) {
@@ -182,13 +201,73 @@ void WhisperWorker::loadModel(uint64_t loadRequestId, const QString& modelPath, 
     qCDebug(lcSpeech) << "WhisperWorker: Initializing whisper.cpp context from" << modelPath
                       << "(requested GPU:" << useGpu << ", loadRequestId:" << loadRequestId << ")";
 
+    std::ifstream fin(modelPath.toStdString(), std::ios::binary);
+    if (!fin.is_open()) {
+        qWarning() << "WhisperWorker: Failed to open model file at:" << modelPath;
+        emit modelLoaded(loadRequestId, modelPath, false, tr("Failed to open model file at %1").arg(modelPath),
+                         QString());
+        return;
+    }
+
+    AbortableModelLoaderContext loaderCtx;
+    loaderCtx.file = std::move(fin);
+    loaderCtx.worker = this;
+    loaderCtx.loadRequestId = loadRequestId;
+
+    whisper_model_loader loader = {};
+    loader.context = &loaderCtx;
+
+    loader.read = [](void* ctx, void* output, size_t read_size) -> size_t {
+        auto* lctx = static_cast<AbortableModelLoaderContext*>(ctx);
+        if (!lctx || !lctx->file.is_open()) {
+            return 0;
+        }
+        if (lctx->worker && lctx->worker->isAborted(lctx->loadRequestId)) {
+            throw std::runtime_error("Whisper model loading aborted");
+        }
+        lctx->file.read(static_cast<char*>(output), static_cast<std::streamsize>(read_size));
+        if (!lctx->file && lctx->file.bad()) {
+            throw std::runtime_error("Whisper model file read error");
+        }
+        return static_cast<size_t>(lctx->file.gcount());
+    };
+
+    loader.eof = [](void* ctx) -> bool {
+        auto* lctx = static_cast<AbortableModelLoaderContext*>(ctx);
+        if (!lctx || !lctx->file.is_open()) {
+            return true;
+        }
+        if (lctx->worker && lctx->worker->isAborted(lctx->loadRequestId)) {
+            return true;
+        }
+        return lctx->file.eof();
+    };
+
+    loader.close = [](void* ctx) -> void {
+        auto* lctx = static_cast<AbortableModelLoaderContext*>(ctx);
+        if (lctx && lctx->file.is_open()) {
+            lctx->file.close();
+        }
+    };
+
     whisper_context_params cparams = whisper_context_default_params();
     cparams.use_gpu = useGpu;
     cparams.flash_attn = false;
 
-    m_ctx = whisper_init_from_file_with_params(modelPath.toUtf8().constData(), cparams);
+    m_ctx = whisper_init_with_params(&loader, cparams);
+
+    if (isAborted(loadRequestId)) {
+        qCDebug(lcSpeech) << "WhisperWorker: Model loading cancelled for request" << loadRequestId;
+        if (m_ctx) {
+            whisper_free(m_ctx);
+            m_ctx = nullptr;
+            m_activeDevice.clear();
+        }
+        return;
+    }
+
     if (!m_ctx) {
-        qWarning() << "WhisperWorker: whisper_init_from_file_with_params failed for" << modelPath;
+        qWarning() << "WhisperWorker: whisper_init_with_params failed for" << modelPath;
         emit modelLoaded(loadRequestId, modelPath, false, tr("Failed to initialize whisper model context"), QString());
         return;
     }
@@ -199,7 +278,6 @@ void WhisperWorker::loadModel(uint64_t loadRequestId, const QString& modelPath, 
     m_activeDevice = u"CPU"_s;
 #endif
 
-    m_abortRequested.store(false, std::memory_order_release);
     qCDebug(lcSpeech) << "WhisperWorker: Model loaded successfully. Active device:" << m_activeDevice;
     emit modelLoaded(loadRequestId, modelPath, true, QString(), m_activeDevice);
 }
@@ -226,6 +304,9 @@ void WhisperWorker::cancel(uint64_t requestId) {
 
 bool WhisperWorker::isAborted(uint64_t requestId) const {
     if (m_abortRequested.load(std::memory_order_acquire)) {
+        return true;
+    }
+    if (QThread::currentThread() && QThread::currentThread()->isInterruptionRequested()) {
         return true;
     }
     if (requestId > 0 && requestId <= m_cancelledRequestId.load(std::memory_order_acquire)) {

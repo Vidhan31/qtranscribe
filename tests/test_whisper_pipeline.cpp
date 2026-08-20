@@ -187,6 +187,35 @@ private slots:
         QVERIFY(!client.isModelLoaded());
         QVERIFY(client.loadedModelPath().isEmpty());
     }
+
+    void testWorkerAbortLogic() {
+        WhisperWorker worker;
+
+        // Initially not aborted
+        QVERIFY(!worker.isAborted(1));
+        QVERIFY(!worker.isAborted(0));
+
+        // Cancel specific request ID
+        worker.cancel(42);
+        QVERIFY(worker.isAborted(42));
+        QVERIFY(worker.isAborted(10));
+        QVERIFY(worker.isAborted(0));
+
+        // Cancel all (requestId = 0)
+        worker.cancel(0);
+        QVERIFY(worker.isAborted(0));
+        QVERIFY(worker.isAborted(100));
+    }
+
+    void testClientLifecycleAndGracefulShutdown() {
+        // Test that WhisperSttClient starts worker thread and tears down gracefully
+        for (int i = 0; i < 3; ++i) {
+            auto client = std::make_unique<WhisperSttClient>();
+            client->loadModel(QStringLiteral("/tmp/nonexistent_test_model.bin"));
+            client->cancel();
+            // Client destructor runs here and must join worker thread cleanly without terminate()
+        }
+    }
 };
 
 QTEST_MAIN(TestWhisperPipeline)
