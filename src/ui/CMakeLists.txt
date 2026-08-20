@@ -75,7 +75,9 @@ qt_add_resources(qtranscribe_ui "qtranscribe_assets"
         ${CMAKE_SOURCE_DIR}/assets/speech-to-text-256.png
         ${CMAKE_SOURCE_DIR}/assets/speech-to-text-512.png
         ${CMAKE_SOURCE_DIR}/assets/mute.svg
+        ${CMAKE_SOURCE_DIR}/assets/mute-dark.svg
         ${CMAKE_SOURCE_DIR}/assets/microphone.svg
+        ${CMAKE_SOURCE_DIR}/assets/microphone-dark.svg
         ${CMAKE_SOURCE_DIR}/assets/icons/mic.svg
         ${CMAKE_SOURCE_DIR}/assets/icons/stop.svg
         ${CMAKE_SOURCE_DIR}/assets/icons/spinner.svg
@@ -122,4 +124,9 @@ target_precompile_headers(qtranscribe_ui
         <QQuickItem>
         <QObject>
         <QString>
+)
+
+add_custom_command(TARGET qtranscribe_ui POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E create_symlink "${CMAKE_BINARY_DIR}/QTranscribe" "${CMAKE_SOURCE_DIR}/QTranscribe"
+    COMMENT "Creating QTranscribe module symlink for editor and qmllint tooling"
 )

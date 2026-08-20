@@ -167,9 +167,17 @@ install(FILES "assets/mute.svg"
     DESTINATION "${DESKTOP_AND_ICON_PREFIX}/icons/hicolor/scalable/status"
     RENAME "qtranscribe-tray.svg"
 )
+install(FILES "assets/mute.svg"
+    DESTINATION "${DESKTOP_AND_ICON_PREFIX}/icons/hicolor/symbolic/status"
+    RENAME "qtranscribe-tray-symbolic.svg"
+)
 install(FILES "assets/microphone.svg"
     DESTINATION "${DESKTOP_AND_ICON_PREFIX}/icons/hicolor/scalable/status"
     RENAME "qtranscribe-tray-recording.svg"
+)
+install(FILES "assets/microphone.svg"
+    DESTINATION "${DESKTOP_AND_ICON_PREFIX}/icons/hicolor/symbolic/status"
+    RENAME "qtranscribe-tray-recording-symbolic.svg"
 )
 
 if(ENABLE_QT_DEPLOYMENT)
