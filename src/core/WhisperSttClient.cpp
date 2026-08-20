@@ -5,6 +5,7 @@
 #include "WhisperModelManager.h"
 #include "WhisperWorker.h"
 
+#include <QDeadlineTimer>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -41,9 +42,15 @@ WhisperSttClient::WhisperSttClient(QObject* parent)
 
 WhisperSttClient::~WhisperSttClient() {
     cancel();
-    emit requestUnloadModel();
+    if (m_worker) {
+        m_worker->cancel(0);
+    }
     m_workerThread.quit();
-    m_workerThread.wait(2000);
+    if (!m_workerThread.wait(QDeadlineTimer(2000))) {
+        qCWarning(lcSpeech)
+            << "WhisperSttClient: Worker thread did not exit within 2s deadline, waiting unconditionally";
+        m_workerThread.wait();
+    }
 }
 
 void WhisperSttClient::setModelManager(WhisperModelManager* manager) {
