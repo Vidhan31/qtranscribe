@@ -9,6 +9,7 @@
 #include "TranscriptionModel.h"
 
 #include "GlobalShortcutManager.h"
+#include "WhisperModelManager.h"
 #include "WhisperSttClient.h"
 
 #include <QApplication>
@@ -102,6 +103,7 @@ int main(int argc, char* argv[]) {
     auto* api = engine.singletonInstance<GroqApiClient*>("QTranscribe", "GroqApiClient");
     auto* stt = engine.singletonInstance<GroqSttClient*>("QTranscribe", "GroqSttClient");
     auto* whisperStt = engine.singletonInstance<WhisperSttClient*>("QTranscribe", "WhisperSttClient");
+    auto* whisperModels = engine.singletonInstance<WhisperModelManager*>("QTranscribe", "WhisperModelManager");
     auto* llm = engine.singletonInstance<GroqLlmClient*>("QTranscribe", "GroqLlmClient");
     auto* tracker = engine.singletonInstance<GroqUsageTracker*>("QTranscribe", "GroqUsageTracker");
     auto* recorder = engine.singletonInstance<AudioRecorder*>("QTranscribe", "AudioRecorder");
@@ -112,6 +114,8 @@ int main(int argc, char* argv[]) {
 
     if (stt && api)
         stt->setApiClient(api);
+    if (whisperStt && whisperModels)
+        whisperStt->setModelManager(whisperModels);
     if (llm && api)
         llm->setApiClient(api);
     if (tracker && api)

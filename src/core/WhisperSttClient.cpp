@@ -2,6 +2,7 @@
 
 #include "LoggingCategories.h"
 
+#include "WhisperModelManager.h"
 #include "WhisperWorker.h"
 
 #include <QDir>
@@ -45,27 +46,56 @@ WhisperSttClient::~WhisperSttClient() {
     m_workerThread.wait(2000);
 }
 
+void WhisperSttClient::setModelManager(WhisperModelManager* manager) {
+    if (m_modelManager == manager) {
+        return;
+    }
+
+    if (m_modelManager) {
+        disconnect(m_modelManager, &WhisperModelManager::selectedModelChanged, this,
+                   &WhisperSttClient::checkModelStatus);
+        disconnect(m_modelManager, &WhisperModelManager::modelStatusChanged, this, &WhisperSttClient::checkModelStatus);
+    }
+
+    m_modelManager = manager;
+
+    if (m_modelManager) {
+        connect(m_modelManager, &WhisperModelManager::selectedModelChanged, this, &WhisperSttClient::checkModelStatus);
+        connect(m_modelManager, &WhisperModelManager::modelStatusChanged, this, &WhisperSttClient::checkModelStatus);
+    }
+
+    checkModelStatus();
+}
+
+WhisperModelManager* WhisperSttClient::modelManager() const {
+    return m_modelManager;
+}
+
 QString WhisperSttClient::modelsDirectory() const {
+    if (m_modelManager) {
+        return m_modelManager->modelsDirectory();
+    }
     const QString genericData = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation);
     return genericData + u"/qtranscribe/models"_s;
 }
 
 QString WhisperSttClient::modelFileName() const {
-    return QString::fromLatin1(kModelFileName);
-}
-
-QString WhisperSttClient::downloadUrl() const {
-    return QString::fromLatin1(kDownloadUrl);
+    const QString path = resolveModelPath();
+    return QFileInfo(path).fileName();
 }
 
 QString WhisperSttClient::resolveModelPath() const {
-    const QString primary = modelsDirectory() + u"/"_s + QString::fromLatin1(kModelFileName);
+    if (m_modelManager) {
+        return m_modelManager->selectedModelPath();
+    }
+
+    const QString primary = modelsDirectory() + u"/ggml-tiny.en.bin"_s;
     if (QFile::exists(primary)) {
         return primary;
     }
 
     const QString appData = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
-    const QString fallback = appData + u"/models/"_s + QString::fromLatin1(kModelFileName);
+    const QString fallback = appData + u"/models/ggml-tiny.en.bin"_s;
     if (QFile::exists(fallback)) {
         return fallback;
     }
@@ -83,6 +113,10 @@ bool WhisperSttClient::isModelLoaded() const {
 
 QString WhisperSttClient::modelPath() const {
     return resolveModelPath();
+}
+
+QString WhisperSttClient::loadedModelPath() const {
+    return m_loadedModelPath;
 }
 
 QString WhisperSttClient::computeDevice() const {
@@ -114,18 +148,19 @@ void WhisperSttClient::checkModelStatus() {
     emit readyChanged();
 }
 
-void WhisperSttClient::loadModel() {
-    const QString path = resolveModelPath();
+void WhisperSttClient::loadModel(const QString& customPath) {
+    const QString path = customPath.isEmpty() ? resolveModelPath() : customPath;
     if (!QFile::exists(path)) {
-        setLastError(
-            tr("Whisper model file not found. Please download %1 to %2.").arg(modelFileName(), modelsDirectory()));
+        setLastError(tr("Whisper model file not found at %1. Please download it in Model Settings.").arg(path));
         m_modelLoaded = false;
+        m_loadedModelPath.clear();
         emit modelStatusChanged();
         emit readyChanged();
         return;
     }
 
     setLastError({});
+    m_loadedModelPath = path;
     emit requestLoadModel(path, true);
 }
 
@@ -171,6 +206,7 @@ void WhisperSttClient::onWorkerModelLoaded(bool success, const QString& error, c
     m_modelLoaded = success;
     m_computeDevice = activeDevice;
     if (!success) {
+        m_loadedModelPath.clear();
         setLastError(error.isEmpty() ? tr("Failed to load whisper.cpp model") : error);
     } else {
         setLastError({});
@@ -183,6 +219,7 @@ void WhisperSttClient::onWorkerModelLoaded(bool success, const QString& error, c
 
 void WhisperSttClient::onWorkerModelUnloaded() {
     m_modelLoaded = false;
+    m_loadedModelPath.clear();
     m_computeDevice.clear();
     emit modelStatusChanged();
     emit computeDeviceChanged();

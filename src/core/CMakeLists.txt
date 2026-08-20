@@ -17,6 +17,8 @@ add_library(qtranscribe_core STATIC
     WhisperWorker.cpp
     WhisperSttClient.h
     WhisperSttClient.cpp
+    WhisperModelManager.h
+    WhisperModelManager.cpp
     GroqLlmClient.h
     GroqLlmClient.cpp
     GroqUsageTracker.h
