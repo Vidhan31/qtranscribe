@@ -112,7 +112,8 @@ Item {
 
                     StyledText {
                         text: {
-                            if (WhisperSttClient.isModelLoaded) {
+                            if (WhisperSttClient.isModelLoaded && WhisperSttClient.loadedModelPath
+                                === WhisperSttClient.modelPath) {
                                 return qsTr("Loaded into memory and ready for dictation");
                             }
                             if (WhisperModelManager.isSelectedModelInstalled) {
@@ -127,7 +128,8 @@ Item {
 
                 StateBadge {
                     text: {
-                        if (WhisperSttClient.isModelLoaded) {
+                        if (WhisperSttClient.isModelLoaded && WhisperSttClient.loadedModelPath
+                            === WhisperSttClient.modelPath) {
                             return qsTr("Ready");
                         }
                         if (WhisperModelManager.isSelectedModelInstalled) {
@@ -136,7 +138,8 @@ Item {
                         return qsTr("Missing");
                     }
                     statusType: {
-                        if (WhisperSttClient.isModelLoaded) {
+                        if (WhisperSttClient.isModelLoaded && WhisperSttClient.loadedModelPath
+                            === WhisperSttClient.modelPath) {
                             return "success";
                         }
                         if (WhisperModelManager.isSelectedModelInstalled) {
@@ -156,9 +159,11 @@ Item {
                 spacing: Theme.spacingSm
 
                 StyledButton {
-                    text: WhisperSttClient.isModelLoaded ? qsTr("Reload Model") : qsTr("Load Model")
+                    text: (WhisperSttClient.isModelLoaded && WhisperSttClient.loadedModelPath
+                           === WhisperSttClient.modelPath) ? qsTr("Reload Model") : qsTr("Load Model")
                     size: "small"
-                    variant: WhisperSttClient.isModelLoaded ? "secondary" : "primary"
+                    variant: (WhisperSttClient.isModelLoaded && WhisperSttClient.loadedModelPath
+                              === WhisperSttClient.modelPath) ? "secondary" : "primary"
                     enabled: WhisperModelManager.isSelectedModelInstalled && !WhisperSttClient.busy
                     onClicked: {
                         WhisperSttClient.loadModel();

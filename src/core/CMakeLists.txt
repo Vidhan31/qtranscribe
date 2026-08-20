@@ -49,6 +49,7 @@ target_include_directories(qtranscribe_core
         ${CMAKE_SOURCE_DIR}/src
         ${whisper_SOURCE_DIR}/include
         ${whisper_SOURCE_DIR}/ggml/include
+        ${whisper_SOURCE_DIR}/examples
 )
 
 target_link_libraries(qtranscribe_core

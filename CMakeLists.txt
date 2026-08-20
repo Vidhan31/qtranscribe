@@ -280,4 +280,5 @@ if(BUILD_TESTING)
         COMMAND ${CMAKE_COMMAND} --build . --target all_qmllint --config $<CONFIGURATION>
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
     )
+    add_subdirectory(tests)
 endif()

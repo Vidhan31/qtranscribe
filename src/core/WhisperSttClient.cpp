@@ -136,7 +136,7 @@ bool WhisperSttClient::isVulkanSupported() const {
 }
 
 bool WhisperSttClient::isReady() const {
-    return m_modelLoaded && !m_busy;
+    return m_modelLoaded && !m_busy && (m_loadedModelPath == resolveModelPath()) && QFile::exists(m_loadedModelPath);
 }
 
 bool WhisperSttClient::isBusy() const {
@@ -144,7 +144,7 @@ bool WhisperSttClient::isBusy() const {
 }
 
 void WhisperSttClient::activate() {
-    if (isModelInstalled() && !m_modelLoaded) {
+    if (isModelInstalled() && (!m_modelLoaded || m_loadedModelPath != resolveModelPath())) {
         loadModel();
     }
     emit readyChanged();
@@ -159,7 +159,7 @@ void WhisperSttClient::deactivate() {
 }
 
 bool WhisperSttClient::hasNotice() const {
-    return !isModelInstalled() || !m_modelLoaded;
+    return !isModelInstalled() || !m_modelLoaded || (m_loadedModelPath != resolveModelPath());
 }
 
 QVariantMap WhisperSttClient::notice() const {
@@ -174,7 +174,7 @@ QVariantMap WhisperSttClient::notice() const {
         return noticeMap;
     }
 
-    if (!m_modelLoaded) {
+    if (!m_modelLoaded || m_loadedModelPath != resolveModelPath()) {
         noticeMap[u"hasNotice"_s] = true;
         noticeMap[u"type"_s] = u"info"_s;
         noticeMap[u"title"_s] = tr("Loading Whisper Model");
@@ -188,6 +188,26 @@ QVariantMap WhisperSttClient::notice() const {
 }
 
 void WhisperSttClient::checkModelStatus() {
+    const QString targetPath = resolveModelPath();
+
+    if (m_modelLoaded) {
+        if (!m_loadedModelPath.isEmpty() && !QFile::exists(m_loadedModelPath)) {
+            // Previously loaded model was deleted from disk
+            qCDebug(lcSpeech) << "WhisperSttClient: Loaded model file no longer exists, unloading:"
+                              << m_loadedModelPath;
+            unloadModel();
+        } else if (m_loadedModelPath != targetPath) {
+            // Selected model changed while a model was loaded
+            if (isModelInstalled()) {
+                qCDebug(lcSpeech) << "WhisperSttClient: Model selection changed, reloading to target:" << targetPath;
+                loadModel(targetPath);
+            } else {
+                qCDebug(lcSpeech) << "WhisperSttClient: Selected model not installed, unloading current model";
+                unloadModel();
+            }
+        }
+    }
+
     emit modelStatusChanged();
     emit readyChanged();
     emit noticeChanged();

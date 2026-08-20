@@ -7,19 +7,51 @@
 #include <QThread>
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <vector>
 
 #include <whisper.h>
 
+#define MA_NO_DEVICE_IO
+#define MA_NO_THREADING
+#define MA_NO_ENCODING
+#define MA_NO_GENERATION
+#define MA_NO_RESOURCE_MANAGER
+#define MA_NO_NODE_GRAPH
+#define MINIAUDIO_IMPLEMENTATION
+#include "miniaudio.h"
+
 using namespace Qt::StringLiterals;
 
-namespace {
-bool extractPcmSamples(const QByteArray& wavData, std::vector<float>& outPcmf32) {
+bool WhisperWorker::extractPcmSamples(const QByteArray& wavData, std::vector<float>& outPcmf32) {
     if (wavData.size() < 12) {
         return false;
     }
 
+    // 1. Try decoding with miniaudio configured to 1-channel mono at WHISPER_SAMPLE_RATE (16 kHz).
+    // miniaudio automatically handles format conversion (Float32, Int32, Int16, UInt8),
+    // channel downmixing (stereo/multichannel -> mono), and anti-aliased resampling.
+    ma_decoder_config decoderConfig = ma_decoder_config_init(ma_format_f32, 1, WHISPER_SAMPLE_RATE);
+    ma_decoder decoder;
+
+    if (ma_decoder_init_memory(wavData.constData(), static_cast<size_t>(wavData.size()), &decoderConfig, &decoder) ==
+        MA_SUCCESS) {
+        ma_uint64 frameCount = 0;
+        if (ma_decoder_get_length_in_pcm_frames(&decoder, &frameCount) == MA_SUCCESS && frameCount > 0) {
+            outPcmf32.resize(static_cast<size_t>(frameCount));
+            ma_uint64 framesRead = 0;
+            if (ma_decoder_read_pcm_frames(&decoder, outPcmf32.data(), frameCount, &framesRead) == MA_SUCCESS &&
+                framesRead > 0) {
+                outPcmf32.resize(static_cast<size_t>(framesRead));
+                ma_decoder_uninit(&decoder);
+                return true;
+            }
+        }
+        ma_decoder_uninit(&decoder);
+    }
+
+    // 2. Fallback manual WAV parser for custom/raw PCM streams
     const char* data = wavData.constData();
     if (std::memcmp(data, "RIFF", 4) != 0 || std::memcmp(data + 8, "WAVE", 4) != 0) {
         return false;
@@ -29,6 +61,8 @@ bool extractPcmSamples(const QByteArray& wavData, std::vector<float>& outPcmf32)
     int dataOffset = -1;
     uint32_t dataBytes = 0;
     uint16_t audioFormat = 1;
+    uint16_t numChannels = 1;
+    uint32_t sampleRate = 16000;
     uint16_t bitsPerSample = 16;
 
     while (pos + 8 <= wavData.size()) {
@@ -39,6 +73,8 @@ bool extractPcmSamples(const QByteArray& wavData, std::vector<float>& outPcmf32)
 
         if (std::memcmp(chunkId, "fmt ", 4) == 0 && chunkSize >= 16 && pos + 16 <= wavData.size()) {
             std::memcpy(&audioFormat, data + pos, 2);
+            std::memcpy(&numChannels, data + pos + 2, 2);
+            std::memcpy(&sampleRate, data + pos + 4, 4);
             std::memcpy(&bitsPerSample, data + pos + 14, 2);
         } else if (std::memcmp(chunkId, "data", 4) == 0) {
             dataOffset = pos;
@@ -49,8 +85,7 @@ bool extractPcmSamples(const QByteArray& wavData, std::vector<float>& outPcmf32)
         pos += chunkSize + (chunkSize % 2);
     }
 
-    if (dataOffset < 0 || dataBytes < sizeof(int16_t) || audioFormat != 1 || bitsPerSample != 16) {
-        // Fallback to standard 44-byte offset if chunk parsing could not resolve PCM data chunk
+    if (dataOffset < 0 || dataBytes < sizeof(int16_t)) {
         if (wavData.size() > 44) {
             dataOffset = 44;
             dataBytes = static_cast<uint32_t>(wavData.size() - 44);
@@ -59,20 +94,66 @@ bool extractPcmSamples(const QByteArray& wavData, std::vector<float>& outPcmf32)
         }
     }
 
-    const int sampleCount = static_cast<int>(dataBytes / sizeof(int16_t));
-    if (sampleCount <= 0) {
+    if (numChannels == 0) {
+        numChannels = 1;
+    }
+
+    const int bytesPerSample = bitsPerSample / 8;
+    if (bytesPerSample <= 0) {
         return false;
     }
 
-    const auto* pcm16 = reinterpret_cast<const int16_t*>(data + dataOffset);
-    outPcmf32.resize(sampleCount);
-    for (int i = 0; i < sampleCount; ++i) {
-        outPcmf32[i] = static_cast<float>(pcm16[i]) / 32768.0f;
+    const int totalSamples = static_cast<int>(dataBytes / bytesPerSample);
+    const int frameCount = totalSamples / numChannels;
+    if (frameCount <= 0) {
+        return false;
     }
 
-    return true;
+    std::vector<float> monoPcm(frameCount);
+    const char* samplePtr = data + dataOffset;
+
+    for (int f = 0; f < frameCount; ++f) {
+        float sum = 0.0f;
+        for (int ch = 0; ch < numChannels; ++ch) {
+            const int sampleIdx = (f * numChannels + ch) * bytesPerSample;
+            if (audioFormat == 3 && bitsPerSample == 32) { // IEEE Float32
+                float val = 0.0f;
+                std::memcpy(&val, samplePtr + sampleIdx, sizeof(float));
+                sum += val;
+            } else if (bitsPerSample == 32) { // 32-bit PCM
+                int32_t val = 0;
+                std::memcpy(&val, samplePtr + sampleIdx, sizeof(int32_t));
+                sum += static_cast<float>(val) / 2147483648.0f;
+            } else if (bitsPerSample == 16) { // 16-bit PCM
+                int16_t val = 0;
+                std::memcpy(&val, samplePtr + sampleIdx, sizeof(int16_t));
+                sum += static_cast<float>(val) / 32768.0f;
+            } else if (bitsPerSample == 8) { // 8-bit PCM
+                const uint8_t val = static_cast<uint8_t>(samplePtr[sampleIdx]);
+                sum += (static_cast<float>(val) - 128.0f) / 128.0f;
+            }
+        }
+        monoPcm[f] = std::clamp(sum / static_cast<float>(numChannels), -1.0f, 1.0f);
+    }
+
+    // Resampling fallback if sample rate is not 16000 Hz
+    if (sampleRate != WHISPER_SAMPLE_RATE && sampleRate > 0) {
+        const double ratio = static_cast<double>(sampleRate) / static_cast<double>(WHISPER_SAMPLE_RATE);
+        const int outSampleCount = static_cast<int>(static_cast<double>(frameCount) / ratio);
+        outPcmf32.resize(outSampleCount);
+        for (int i = 0; i < outSampleCount; ++i) {
+            const double srcIdx = i * ratio;
+            const int idx0 = static_cast<int>(srcIdx);
+            const int idx1 = std::min(idx0 + 1, frameCount - 1);
+            const float frac = static_cast<float>(srcIdx - idx0);
+            outPcmf32[i] = monoPcm[idx0] * (1.0f - frac) + monoPcm[idx1] * frac;
+        }
+    } else {
+        outPcmf32 = std::move(monoPcm);
+    }
+
+    return !outPcmf32.empty();
 }
-} // namespace
 
 WhisperWorker::WhisperWorker(QObject* parent)
     : QObject(parent) { }
@@ -117,6 +198,7 @@ void WhisperWorker::loadModel(const QString& modelPath, bool useGpu) {
     m_activeDevice = u"CPU"_s;
 #endif
 
+    m_abortRequested.store(false, std::memory_order_release);
     qCDebug(lcSpeech) << "WhisperWorker: Model loaded successfully. Active device:" << m_activeDevice;
     emit modelLoaded(true, QString(), m_activeDevice);
 }
@@ -153,7 +235,7 @@ bool WhisperWorker::isAborted(uint64_t requestId) const {
 
 void WhisperWorker::transcribe(uint64_t requestId, const QByteArray& wavData, const QString& language,
                                const QString& prompt) {
-    if (isAborted(requestId)) {
+    if (requestId > 0 && requestId <= m_cancelledRequestId.load(std::memory_order_acquire)) {
         qCDebug(lcSpeech) << "WhisperWorker: Transcription request" << requestId << "cancelled prior to processing";
         return;
     }
@@ -169,7 +251,7 @@ void WhisperWorker::transcribe(uint64_t requestId, const QByteArray& wavData, co
     std::vector<float> pcmf32;
     if (!extractPcmSamples(wavData, pcmf32)) {
         qWarning() << "WhisperWorker: Invalid or unsupported audio format in WAV payload";
-        emit transcriptionFailed(requestId, tr("Invalid audio data: unable to extract 16-bit PCM samples"));
+        emit transcriptionFailed(requestId, tr("Invalid audio data: unable to extract PCM samples"));
         return;
     }
 
