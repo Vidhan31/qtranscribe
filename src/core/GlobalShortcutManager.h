@@ -1,10 +1,24 @@
 #pragma once
 
+#include <QDBusArgument>
 #include <QDBusObjectPath>
+#include <QList>
 #include <QObject>
 #include <QQmlEngine>
 #include <QString>
 #include <QVariantMap>
+
+struct PortalShortcut {
+    QString id;
+    QVariantMap options;
+};
+Q_DECLARE_METATYPE(PortalShortcut)
+
+using ShortcutList = QList<PortalShortcut>;
+Q_DECLARE_METATYPE(ShortcutList)
+
+QDBusArgument& operator<<(QDBusArgument& argument, const PortalShortcut& shortcut);
+const QDBusArgument& operator>>(const QDBusArgument& argument, PortalShortcut& shortcut);
 
 class GlobalShortcutManager : public QObject {
     Q_OBJECT
@@ -23,12 +37,17 @@ public:
     bool isSupported() const;
     QString statusMessage() const;
 
+    Q_INVOKABLE void requestShortcuts();
+
 signals:
     void shortcutActivated(const QString& shortcutId);
     void shortcutDeactivated(const QString& shortcutId);
     void availableChanged();
     void supportedChanged();
     void statusMessageChanged();
+
+public slots:
+    void initializePortal();
 
 private slots:
     void onCreateSessionResponse(uint responseCode, const QVariantMap& results);
@@ -39,9 +58,11 @@ private slots:
                                const QVariantMap& options);
 
 private:
+    void registerHostApp();
     void createSession();
     void bindShortcuts();
     void ensureDesktopFileExists();
+    void ensureIconExists();
     void setAvailable(bool available);
     void setSupported(bool supported);
     void setStatusMessage(const QString& msg);
@@ -49,6 +70,7 @@ private:
     QDBusObjectPath m_sessionHandle;
     bool m_available = false;
     bool m_supported = true;
+    bool m_sessionRequested = false;
     QString m_statusMessage;
     QString m_handleToken;
     QString m_sessionHandleToken;

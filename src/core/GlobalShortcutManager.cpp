@@ -13,17 +13,27 @@
 #include <QRandomGenerator>
 #include <QStandardPaths>
 #include <QTextStream>
-
-#include <utility>
+#include <QTimer>
 
 using namespace Qt::StringLiterals;
 
-using ShortcutOption = std::pair<QString, QVariantMap>;
-using ShortcutList = QList<ShortcutOption>;
+QDBusArgument& operator<<(QDBusArgument& argument, const PortalShortcut& shortcut) {
+    argument.beginStructure();
+    argument << shortcut.id << shortcut.options;
+    argument.endStructure();
+    return argument;
+}
+
+const QDBusArgument& operator>>(const QDBusArgument& argument, PortalShortcut& shortcut) {
+    argument.beginStructure();
+    argument >> shortcut.id >> shortcut.options;
+    argument.endStructure();
+    return argument;
+}
 
 GlobalShortcutManager::GlobalShortcutManager(QObject* parent)
     : QObject(parent) {
-    qDBusRegisterMetaType<ShortcutOption>();
+    qDBusRegisterMetaType<PortalShortcut>();
     qDBusRegisterMetaType<ShortcutList>();
 
     quint32 randVal = QRandomGenerator::global()->generate();
@@ -33,7 +43,7 @@ GlobalShortcutManager::GlobalShortcutManager(QObject* parent)
     qCDebug(lcShortcut) << "GlobalShortcutManager initialized -> Token:" << m_handleToken
                         << "SessionToken:" << m_sessionHandleToken;
 
-    createSession();
+    QTimer::singleShot(50, this, &GlobalShortcutManager::initializePortal);
 }
 
 bool GlobalShortcutManager::isAvailable() const {
@@ -69,7 +79,34 @@ void GlobalShortcutManager::setStatusMessage(const QString& msg) {
     }
 }
 
+void GlobalShortcutManager::requestShortcuts() {
+    m_sessionRequested = false;
+    initializePortal();
+}
+
+void GlobalShortcutManager::ensureIconExists() {
+    const QString iconsBaseDir = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation);
+    if (iconsBaseDir.isEmpty()) {
+        return;
+    }
+
+    const QString userIconsDir = iconsBaseDir + u"/icons/hicolor/128x128/apps"_s;
+    QDir dir(userIconsDir);
+    if (!dir.exists()) {
+        dir.mkpath(u"."_s);
+    }
+
+    const QString iconPath = dir.filePath(u"qtranscribe.png"_s);
+    if (!QFile::exists(iconPath)) {
+        if (QFile::copy(u":/qt/qml/QTranscribe/assets/speech-to-text-128.png"_s, iconPath)) {
+            qCDebug(lcShortcut) << "Exported app icon to:" << iconPath;
+        }
+    }
+}
+
 void GlobalShortcutManager::ensureDesktopFileExists() {
+    ensureIconExists();
+
     const QString desktopFileName = u"qtranscribe.desktop"_s;
     const QString userAppsDir = QStandardPaths::writableLocation(QStandardPaths::ApplicationsLocation);
     if (userAppsDir.isEmpty()) {
@@ -90,7 +127,7 @@ void GlobalShortcutManager::ensureDesktopFileExists() {
         if (existingFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
             QString content = QString::fromUtf8(existingFile.readAll());
             existingFile.close();
-            if (content.contains(u"Exec=" + appPath)) {
+            if (content.contains(u"Exec=" + appPath) && content.contains(u"StartupWMClass=qtranscribe")) {
                 qCDebug(lcShortcut) << "Desktop file is up to date:" << desktopFilePath;
                 return;
             }
@@ -108,7 +145,43 @@ void GlobalShortcutManager::ensureDesktopFileExists() {
     }
 }
 
-void GlobalShortcutManager::createSession() {
+void GlobalShortcutManager::registerHostApp() {
+    if (!QDBusConnection::sessionBus().isConnected()) {
+        return;
+    }
+
+    qCDebug(lcShortcut) << "Registering host application ID with XDG Desktop Portal...";
+
+    QDBusMessage msg =
+        QDBusMessage::createMethodCall(u"org.freedesktop.portal.Desktop"_s, u"/org/freedesktop/portal/desktop"_s,
+                                       u"org.freedesktop.host.portal.Registry"_s, u"Register"_s);
+
+    QVariantMap options;
+    msg << u"qtranscribe"_s << options;
+
+    QDBusMessage reply = QDBusConnection::sessionBus().call(msg);
+    if (reply.type() == QDBusMessage::ErrorMessage) {
+        qCDebug(lcShortcut) << "org.freedesktop.host.portal.Registry.Register:" << reply.errorMessage();
+        if (reply.errorName().contains(u"UnknownInterface"_s) ||
+            reply.errorMessage().contains(u"No such interface"_s)) {
+            QDBusMessage fallbackMsg = QDBusMessage::createMethodCall(
+                u"org.freedesktop.portal.Desktop"_s, u"/org/freedesktop/portal/desktop"_s,
+                u"org.freedesktop.portal.Registry"_s, u"Register"_s);
+            fallbackMsg << u"qtranscribe"_s << options;
+            QDBusMessage fallbackReply = QDBusConnection::sessionBus().call(fallbackMsg);
+            if (fallbackReply.type() == QDBusMessage::ErrorMessage) {
+                qCDebug(lcShortcut) << "org.freedesktop.portal.Registry.Register fallback:"
+                                    << fallbackReply.errorMessage();
+            } else {
+                qCDebug(lcShortcut) << "Registered host app id with portal registry (fallback) successfully";
+            }
+        }
+    } else {
+        qCDebug(lcShortcut) << "Registered host app id 'qtranscribe' with portal registry successfully";
+    }
+}
+
+void GlobalShortcutManager::initializePortal() {
     if (!QDBusConnection::sessionBus().isConnected()) {
         qWarning() << "GlobalShortcutManager: D-Bus session bus not connected";
         setStatusMessage(u"D-Bus session bus not connected"_s);
@@ -117,10 +190,20 @@ void GlobalShortcutManager::createSession() {
         return;
     }
 
-    qCDebug(lcShortcut) << "Requesting XDG GlobalShortcuts portal session...";
-    setStatusMessage(u"Requesting GlobalShortcuts session..."_s);
+    if (m_sessionRequested && !m_sessionHandle.path().isEmpty()) {
+        bindShortcuts();
+        return;
+    }
 
     ensureDesktopFileExists();
+    registerHostApp();
+    createSession();
+}
+
+void GlobalShortcutManager::createSession() {
+    m_sessionRequested = true;
+    qCDebug(lcShortcut) << "Requesting XDG GlobalShortcuts portal session...";
+    setStatusMessage(u"Requesting GlobalShortcuts session..."_s);
 
     QDBusMessage msg =
         QDBusMessage::createMethodCall(u"org.freedesktop.portal.Desktop"_s, u"/org/freedesktop/portal/desktop"_s,
@@ -129,7 +212,6 @@ void GlobalShortcutManager::createSession() {
     QVariantMap options;
     options.insert(u"handle_token"_s, m_handleToken);
     options.insert(u"session_handle_token"_s, m_sessionHandleToken);
-    options.insert(u"app_id"_s, u"qtranscribe"_s);
 
     msg << options;
 
@@ -213,15 +295,16 @@ void GlobalShortcutManager::bindShortcuts() {
                                        u"org.freedesktop.portal.GlobalShortcuts"_s, u"BindShortcuts"_s);
 
     ShortcutList shortcuts;
-    QVariantMap shortcutOpts;
-    shortcutOpts.insert(u"description"_s, u"Toggle speech-to-text recording"_s);
-    shortcutOpts.insert(u"preferred_trigger"_s, u"CTRL+SHIFT+space"_s);
-    shortcuts.append(qMakePair(u"toggle-recording"_s, shortcutOpts));
+    PortalShortcut sc;
+    sc.id = u"toggle-recording"_s;
+    sc.options.insert(u"description"_s, u"Toggle speech-to-text recording"_s);
+    sc.options.insert(u"preferred_trigger"_s, u"CTRL+SHIFT+space"_s);
+    shortcuts.append(sc);
 
     QVariantMap options;
     options.insert(u"handle_token"_s, bindReqToken);
 
-    msg << QVariant::fromValue(m_sessionHandle) << QVariant::fromValue(shortcuts) << QString() << options;
+    msg << m_sessionHandle << QVariant::fromValue(shortcuts) << QString() << options;
 
     QDBusMessage reply = QDBusConnection::sessionBus().call(msg);
     if (reply.type() == QDBusMessage::ErrorMessage) {
