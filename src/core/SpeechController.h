@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QHash>
 #include <QObject>
 #include <QQmlEngine>
 #include <QString>
@@ -9,6 +10,8 @@ class GlobalShortcutManager;
 class AudioRecorder;
 class GroqApiClient;
 class GroqSttClient;
+class WhisperSttClient;
+class AbstractSttClient;
 class GroqLlmClient;
 class TextInjectorClient;
 class TranscriptionModel;
@@ -24,6 +27,10 @@ public:
     enum class DictationState { Idle, Recording, Transcribing, Enhancing, Error };
     Q_ENUM(DictationState)
 
+    enum class TranscriptionBackend { Groq, WhisperCpp };
+    Q_ENUM(TranscriptionBackend)
+
+    Q_PROPERTY(TranscriptionBackend activeBackend READ activeBackend WRITE setActiveBackend NOTIFY activeBackendChanged FINAL)
     Q_PROPERTY(DictationState dictationState READ dictationState NOTIFY dictationStateChanged FINAL)
     Q_PROPERTY(bool isBusy READ isBusy NOTIFY dictationStateChanged FINAL)
     Q_PROPERTY(bool canRecord READ canRecord NOTIFY canRecordChanged FINAL)
@@ -54,13 +61,18 @@ public:
     explicit SpeechController(QObject* parent = nullptr);
     ~SpeechController() override = default;
 
+    void registerSttClient(TranscriptionBackend backend, AbstractSttClient* client);
+    void setSttClient(GroqSttClient* sttClient);
+    void setWhisperSttClient(WhisperSttClient* whisperClient);
     void setApiClient(GroqApiClient* api);
     void setShortcutManager(GlobalShortcutManager* mgr);
     void setAudioRecorder(AudioRecorder* recorder);
-    void setSttClient(GroqSttClient* sttClient);
     void setLlmClient(GroqLlmClient* llmClient);
     void setTextInjector(TextInjectorClient* injector);
     void setHistoryModel(TranscriptionModel* model);
+
+    TranscriptionBackend activeBackend() const;
+    void setActiveBackend(TranscriptionBackend backend);
 
     DictationState dictationState() const;
     bool isBusy() const;
@@ -112,6 +124,7 @@ public slots:
     void quitApp();
 
 signals:
+    void activeBackendChanged();
     void dictationStateChanged();
     void canRecordChanged();
     void statusMessageChanged();
@@ -135,13 +148,14 @@ private slots:
     void onShortcutActivated(const QString& shortcutId);
     void onRecordingFinished(const QByteArray& wavData);
     void onTranscriptionReady(const QString& text);
-    void onGroqError(const QString& error);
+    void onSttError(const QString& error);
     void onLlmEnhancementReady(const QString& enhancedText);
     void onLlmError(const QString& error, const QString& fallbackRawText);
     void onMaxDurationReached();
     void updatePresenterState();
 
 private:
+    AbstractSttClient* activeSttClient() const;
     void setDictationState(DictationState state);
     void setStatusMessage(const QString& msg);
     void setLastError(const QString& error);
@@ -151,7 +165,7 @@ private:
     GroqApiClient* m_apiClient = nullptr;
     GlobalShortcutManager* m_shortcutMgr = nullptr;
     AudioRecorder* m_recorder = nullptr;
-    GroqSttClient* m_sttClient = nullptr;
+    QHash<TranscriptionBackend, AbstractSttClient*> m_sttClients;
     GroqLlmClient* m_llmClient = nullptr;
     TextInjectorClient* m_injector = nullptr;
     TranscriptionModel* m_historyModel = nullptr;
@@ -159,6 +173,7 @@ private:
     QSoundEffect* m_stopChime = nullptr;
     QTimer* m_maxDurationWarningTimer = nullptr;
 
+    TranscriptionBackend m_activeBackend = TranscriptionBackend::Groq;
     bool m_soundEnabled = true;
     bool m_initialized = false;
     bool m_showMaxDurationNotice = false;

@@ -2,13 +2,18 @@
 
 #include "ApiRequestHandler.h"
 
+#include "AbstractSttClient.h"
+#include "GroqResponseParser.h"
+
+#include <QNetworkReply>
+#include <QPointer>
 #include <QQmlEngine>
 #include <QString>
 
 class GroqApiClient;
 class QTimer;
 
-class GroqSttClient : public ApiRequestHandler {
+class GroqSttClient : public AbstractSttClient {
     Q_OBJECT
     QML_ELEMENT
     QML_SINGLETON
@@ -25,7 +30,7 @@ public:
     Q_ENUM(ErrorCategory)
 
     explicit GroqSttClient(QObject* parent = nullptr);
-    ~GroqSttClient() override = default;
+    ~GroqSttClient() override;
 
     void setApiClient(GroqApiClient* apiClient);
     GroqApiClient* apiClient() const;
@@ -43,13 +48,21 @@ public:
     QString customPrompt() const;
     void setCustomPrompt(const QString& prompt);
 
-    Q_INVOKABLE void transcribe(const QByteArray& wavData, const QString& filename = QStringLiteral("audio.wav"));
+    bool isReady() const override;
+    bool isBusy() const override;
+    bool isCancelled() const;
+
+    void activate() override;
+    void deactivate() override;
+    bool hasNotice() const override;
+    QVariantMap notice() const override;
+
+    Q_INVOKABLE void transcribe(const QByteArray& wavData) override;
+    Q_INVOKABLE void transcribe(const QByteArray& wavData, const QString& filename);
     Q_INVOKABLE void retryLast();
     Q_INVOKABLE void cancel() override;
 
 signals:
-    void transcriptionReady(const QString& text);
-    void errorOccurred(const QString& error);
     void lastErrorChanged();
     void errorCategoryChanged();
     void retrySecondsRemainingChanged();
@@ -57,7 +70,15 @@ signals:
     void languageChanged();
     void customPromptChanged();
 
+private slots:
+    void onApiKeySetChanged();
+
 private:
+    void setBusy(bool busy);
+    void prepareNewRequest();
+    bool shouldRetry(const GroqApiResponse& res) const;
+    int calculateRetryDelayMs(const GroqApiResponse& res) const;
+
     void setLastError(const QString& error, ErrorCategory category = ErrorCategory::GeneralError);
     void setErrorCategory(ErrorCategory category);
     void setRetrySecondsRemaining(int seconds);
@@ -67,11 +88,16 @@ private:
 
     GroqApiClient* m_apiClient = nullptr;
     QTimer* m_retryCountdownTimer = nullptr;
+    ApiRequestHandler::RetryPolicy m_retryPolicy;
+    QPointer<QNetworkReply> m_currentReply;
     QByteArray m_lastWavData;
     QString m_lastFilename;
     QString m_lastError;
     ErrorCategory m_errorCategory = ErrorCategory::None;
     int m_retrySecondsRemaining = 0;
+    int m_retryCount = 0;
+    bool m_busy = false;
+    bool m_cancelled = false;
     QString m_selectedModel;
     QString m_language;
     QString m_customPrompt;

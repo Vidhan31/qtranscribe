@@ -1,4 +1,6 @@
 add_library(qtranscribe_core STATIC
+    AbstractSttClient.h
+    AbstractSttClient.cpp
     AudioRecorder.h
     AudioRecorder.cpp
     GlobalShortcutManager.h
@@ -11,6 +13,12 @@ add_library(qtranscribe_core STATIC
     ApiRequestHandler.cpp
     GroqSttClient.h
     GroqSttClient.cpp
+    WhisperWorker.h
+    WhisperWorker.cpp
+    WhisperSttClient.h
+    WhisperSttClient.cpp
+    WhisperModelManager.h
+    WhisperModelManager.cpp
     GroqLlmClient.h
     GroqLlmClient.cpp
     GroqUsageTracker.h
@@ -39,10 +47,14 @@ target_include_directories(qtranscribe_core
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${CMAKE_SOURCE_DIR}/src
+        ${whisper_SOURCE_DIR}/include
+        ${whisper_SOURCE_DIR}/ggml/include
+        ${whisper_SOURCE_DIR}/examples
 )
 
 target_link_libraries(qtranscribe_core
     PUBLIC
+        whisper
         Qt6::Core
         Qt6::Gui
         Qt6::Qml

@@ -38,6 +38,28 @@ include(cmake/CompilerFlags.cmake)
 if(BUILD_WL_CLIPBOARD)
     include(cmake/WlClipboard.cmake)
 endif()
+include(FetchContent)
+
+find_package(Vulkan QUIET COMPONENTS glslc)
+if(Vulkan_FOUND AND Vulkan_glslc_FOUND)
+    message(STATUS "Vulkan SDK and glslc found (${Vulkan_VERSION}): enabling Vulkan acceleration for whisper.cpp")
+    set(GGML_VULKAN ON CACHE BOOL "whisper: enable Vulkan backend" FORCE)
+else()
+    message(STATUS "Vulkan SDK or glslc not found: building whisper.cpp with CPU inference only")
+    set(GGML_VULKAN OFF CACHE BOOL "whisper: enable Vulkan backend" FORCE)
+endif()
+
+set(WHISPER_BUILD_EXAMPLES OFF CACHE BOOL "whisper: disable examples" FORCE)
+set(WHISPER_BUILD_TESTS OFF CACHE BOOL "whisper: disable tests" FORCE)
+set(WHISPER_BUILD_SERVER OFF CACHE BOOL "whisper: disable server" FORCE)
+
+FetchContent_Declare(
+    whisper
+    GIT_REPOSITORY https://github.com/ggml-org/whisper.cpp.git
+    GIT_TAG        v1.9.3
+    GIT_SHALLOW    TRUE
+)
+FetchContent_MakeAvailable(whisper)
 
 add_subdirectory(src/core)
 add_subdirectory(src/ui)
@@ -258,4 +280,5 @@ if(BUILD_TESTING)
         COMMAND ${CMAKE_COMMAND} --build . --target all_qmllint --config $<CONFIGURATION>
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
     )
+    add_subdirectory(tests)
 endif()

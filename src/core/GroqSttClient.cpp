@@ -11,7 +11,7 @@
 using namespace Qt::StringLiterals;
 
 GroqSttClient::GroqSttClient(QObject* parent)
-    : ApiRequestHandler(parent)
+    : AbstractSttClient(parent)
     , m_retryCountdownTimer(new QTimer(this)) {
     QSettings settings;
     m_selectedModel = settings.value(u"Groq/Model"_s, QString::fromLatin1(kDefaultModel)).toString();
@@ -32,12 +32,113 @@ GroqSttClient::GroqSttClient(QObject* parent)
     });
 }
 
+GroqSttClient::~GroqSttClient() {
+    if (m_currentReply) {
+        m_currentReply->abort();
+    }
+}
+
 void GroqSttClient::setApiClient(GroqApiClient* apiClient) {
+    if (m_apiClient == apiClient) {
+        return;
+    }
+    if (m_apiClient) {
+        disconnect(m_apiClient, &GroqApiClient::apiKeySetChanged, this, &GroqSttClient::onApiKeySetChanged);
+    }
     m_apiClient = apiClient;
+    if (m_apiClient) {
+        connect(m_apiClient, &GroqApiClient::apiKeySetChanged, this, &GroqSttClient::onApiKeySetChanged);
+    }
+    emit readyChanged();
 }
 
 GroqApiClient* GroqSttClient::apiClient() const {
     return m_apiClient;
+}
+
+void GroqSttClient::onApiKeySetChanged() {
+    emit readyChanged();
+    emit noticeChanged();
+}
+
+void GroqSttClient::activate() {
+    emit readyChanged();
+    emit noticeChanged();
+}
+
+void GroqSttClient::deactivate() {
+    cancel();
+}
+
+bool GroqSttClient::hasNotice() const {
+    return !m_apiClient || !m_apiClient->apiKeySet();
+}
+
+QVariantMap GroqSttClient::notice() const {
+    QVariantMap noticeMap;
+    if (!m_apiClient || !m_apiClient->apiKeySet()) {
+        noticeMap[u"hasNotice"_s] = true;
+        noticeMap[u"type"_s] = u"warning"_s;
+        noticeMap[u"title"_s] = tr("Groq API Key Required");
+        noticeMap[u"message"_s] = tr("Configure your API key in Settings to begin speech transcription.");
+        noticeMap[u"actionText"_s] = tr("Configure API Key");
+        noticeMap[u"actionId"_s] = u"openApiKeySettings"_s;
+    }
+    return noticeMap;
+}
+
+bool GroqSttClient::isReady() const {
+    return m_apiClient && m_apiClient->apiKeySet();
+}
+
+bool GroqSttClient::isBusy() const {
+    return m_busy;
+}
+
+bool GroqSttClient::isCancelled() const {
+    return m_cancelled;
+}
+
+void GroqSttClient::setBusy(bool busy) {
+    if (m_busy != busy) {
+        m_busy = busy;
+        emit busyChanged();
+    }
+}
+
+void GroqSttClient::prepareNewRequest() {
+    m_cancelled = false;
+    m_retryCount = 0;
+}
+
+bool GroqSttClient::shouldRetry(const GroqApiResponse& res) const {
+    if (m_cancelled || m_retryCount >= m_retryPolicy.maxRetries) {
+        return false;
+    }
+
+    if (res.httpStatus >= 500 && res.httpStatus <= 599) {
+        return true;
+    }
+
+    if (res.networkError == QNetworkReply::TimeoutError ||
+        res.networkError == QNetworkReply::TemporaryNetworkFailureError ||
+        res.networkError == QNetworkReply::NetworkSessionFailedError) {
+        return true;
+    }
+
+    if (res.isRateLimited && res.retryAfterSeconds > 0 &&
+        res.retryAfterSeconds <= m_retryPolicy.maxTransientRetryAfterSec) {
+        return true;
+    }
+
+    return false;
+}
+
+int GroqSttClient::calculateRetryDelayMs(const GroqApiResponse& res) const {
+    if (res.isRateLimited && res.retryAfterSeconds > 0) {
+        return res.retryAfterSeconds * 1000;
+    }
+    return m_retryPolicy.defaultDelayMs;
 }
 
 QString GroqSttClient::lastError() const {
@@ -111,11 +212,17 @@ void GroqSttClient::setCustomPrompt(const QString& prompt) {
 }
 
 void GroqSttClient::cancel() {
-    ApiRequestHandler::cancel();
+    m_cancelled = true;
+    if (m_currentReply) {
+        m_currentReply->abort();
+        m_currentReply = nullptr;
+    }
+    m_retryCount = 0;
     m_retryCountdownTimer->stop();
     setRetrySecondsRemaining(0);
     m_lastWavData.clear();
     m_lastFilename.clear();
+    setBusy(false);
 }
 
 void GroqSttClient::retryLast() {
@@ -124,6 +231,10 @@ void GroqSttClient::retryLast() {
         m_retryCount = 0;
         sendTranscribeRequest();
     }
+}
+
+void GroqSttClient::transcribe(const QByteArray& wavData) {
+    transcribe(wavData, QStringLiteral("audio.wav"));
 }
 
 void GroqSttClient::transcribe(const QByteArray& wavData, const QString& filename) {

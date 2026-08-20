@@ -88,17 +88,25 @@ void AudioRecorder::startRecording() {
     qCDebug(lcAudio) << "Using audio input device:" << inputDevice.description()
                      << "Preferred format sample rate:" << inputDevice.preferredFormat().sampleRate();
 
+    m_format.setSampleRate(kSampleRate);
+    m_format.setChannelCount(kChannelCount);
+    m_format.setSampleFormat(QAudioFormat::Int16);
+
     if (!inputDevice.isFormatSupported(m_format)) {
         qWarning("AudioRecorder: requested format not supported, using device preferred format");
         m_format = inputDevice.preferredFormat();
-        m_format.setChannelCount(kChannelCount);
+        QAudioFormat monoFormat = m_format;
+        monoFormat.setChannelCount(kChannelCount);
+        if (inputDevice.isFormatSupported(monoFormat)) {
+            m_format = monoFormat;
+        }
     }
 
     qCDebug(lcAudio) << "Audio format setup -> SampleRate:" << m_format.sampleRate()
                      << "Channels:" << m_format.channelCount() << "SampleFormat:" << m_format.sampleFormat();
 
     m_pcmData.clear();
-    m_pcmData.reserve(kSampleRate * kChannelCount * (kSampleSize / 8) * 30);
+    m_pcmData.reserve(m_format.sampleRate() * m_format.channelCount() * m_format.bytesPerSample() * 30);
 
     delete m_source;
     m_source = new QAudioSource(inputDevice, m_format, this);
@@ -165,8 +173,8 @@ void AudioRecorder::stopRecording() {
 
     QByteArray wavData = buildWavFile(m_pcmData);
 
-    qreal durationSecs = static_cast<qreal>(m_pcmData.size()) /
-                         (m_format.sampleRate() * m_format.channelCount() * m_format.bytesPerSample());
+    const qreal durationSecs = static_cast<qreal>(m_pcmData.size()) /
+                               (m_format.sampleRate() * m_format.channelCount() * m_format.bytesPerSample());
     qCDebug(lcAudio) << "Audio recording stopped -> PCM bytes:" << m_pcmData.size()
                      << "Duration:" << QString::number(durationSecs, 'f', 2) << "s"
                      << "WAV total size:" << wavData.size() << "bytes";
@@ -190,27 +198,60 @@ void AudioRecorder::onReadyRead() {
 
     m_pcmData.append(chunk);
 
-    const auto* samples = reinterpret_cast<const qint16*>(chunk.constData());
-    const qsizetype sampleCount = chunk.size() / sizeof(qint16);
+    double sumSquares = 0.0;
+    qsizetype sampleCount = 0;
+
+    const auto sampleFormat = m_format.sampleFormat();
+    if (sampleFormat == QAudioFormat::Float) {
+        sampleCount = chunk.size() / sizeof(float);
+        if (sampleCount > 0) {
+            const auto* samples = reinterpret_cast<const float*>(chunk.constData());
+            for (qsizetype i = 0; i < sampleCount; ++i) {
+                const double val = static_cast<double>(samples[i]);
+                sumSquares += val * val;
+            }
+        }
+    } else if (sampleFormat == QAudioFormat::Int32) {
+        sampleCount = chunk.size() / sizeof(qint32);
+        if (sampleCount > 0) {
+            const auto* samples = reinterpret_cast<const qint32*>(chunk.constData());
+            for (qsizetype i = 0; i < sampleCount; ++i) {
+                const double val = static_cast<double>(samples[i]) / 2147483647.0;
+                sumSquares += val * val;
+            }
+        }
+    } else if (sampleFormat == QAudioFormat::UInt8) {
+        sampleCount = chunk.size() / sizeof(quint8);
+        if (sampleCount > 0) {
+            const auto* samples = reinterpret_cast<const quint8*>(chunk.constData());
+            for (qsizetype i = 0; i < sampleCount; ++i) {
+                const double val = (static_cast<double>(samples[i]) - 128.0) / 128.0;
+                sumSquares += val * val;
+            }
+        }
+    } else { // Default Int16
+        sampleCount = chunk.size() / sizeof(qint16);
+        if (sampleCount > 0) {
+            const auto* samples = reinterpret_cast<const qint16*>(chunk.constData());
+            for (qsizetype i = 0; i < sampleCount; ++i) {
+                const double val = static_cast<double>(samples[i]) / 32767.0;
+                sumSquares += val * val;
+            }
+        }
+    }
 
     if (sampleCount == 0) {
         return;
     }
 
-    double sumSquares = 0.0;
-    for (qsizetype i = 0; i < sampleCount; ++i) {
-        double normalized = static_cast<double>(samples[i]) / (std::numeric_limits<qint16>::max)();
-        sumSquares += normalized * normalized;
-    }
-
-    double rms = std::sqrt(sumSquares / sampleCount);
+    const double rms = std::sqrt(sumSquares / sampleCount);
     setAudioLevel(std::clamp(rms, 0.0, 1.0));
 }
 
 QByteArray AudioRecorder::buildWavFile(const QByteArray& pcmData) const {
     const quint32 dataSize = static_cast<quint32>(pcmData.size());
     const quint32 fileSize = 36 + dataSize;
-    const quint16 audioFormat = 1;
+    const quint16 audioFormat = (m_format.sampleFormat() == QAudioFormat::Float) ? 3 : 1;
     const quint16 numChannels = static_cast<quint16>(m_format.channelCount());
     const quint32 sampleRate = static_cast<quint32>(m_format.sampleRate());
     const quint16 bitsPerSample = static_cast<quint16>(m_format.bytesPerSample() * 8);
