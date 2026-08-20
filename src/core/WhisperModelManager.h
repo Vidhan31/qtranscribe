@@ -146,6 +146,7 @@ private:
     QPointer<QNetworkReply> m_currentReply;
     QScopedPointer<QFile> m_partFile;
     QString m_downloadingModelId;
+    QString m_downloadAbortReason;
     qreal m_currentProgress = 0.0;
     qint64 m_currentBytesReceived = 0;
     qint64 m_currentTotalBytes = 0;

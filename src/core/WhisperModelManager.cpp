@@ -263,6 +263,7 @@ void WhisperModelManager::startDownload(const QString& modelId) {
 
     setLastError({});
     m_downloadingModelId = modelId;
+    m_downloadAbortReason.clear();
     m_currentProgress = 0.0;
     m_currentBytesReceived = 0;
     m_currentTotalBytes = model.sizeBytes;
@@ -346,6 +347,7 @@ void WhisperModelManager::cancelDownload(const QString& modelId) {
     }
 
     m_downloadingModelId.clear();
+    m_downloadAbortReason.clear();
     m_currentProgress = 0.0;
     m_currentBytesReceived = 0;
     m_currentTotalBytes = 0;
@@ -399,17 +401,71 @@ void WhisperModelManager::checkDiskSpace() {
 }
 
 void WhisperModelManager::onDownloadReadyRead() {
-    if (!m_currentReply || !m_partFile || !m_partFile->isOpen()) {
+    if (!m_currentReply || !m_partFile || !m_partFile->isOpen() || m_downloadingModelId.isEmpty()) {
         return;
     }
 
+    const int idx = findModelIndex(m_downloadingModelId);
+    if (idx < 0) {
+        return;
+    }
+
+    const auto& model = m_models[idx];
     const QByteArray chunk = m_currentReply->readAll();
-    if (!chunk.isEmpty()) {
-        m_partFile->write(chunk);
+    if (chunk.isEmpty()) {
+        return;
+    }
+
+    // 1. Enforce preflight storage bound / catalogued size cap on incoming stream
+    const qint64 currentSize = m_partFile->size();
+    if (model.sizeBytes > 0 && (currentSize + chunk.size() > model.sizeBytes)) {
+        m_downloadAbortReason =
+            tr("Download for %1 exceeded catalogued size of %2.").arg(model.name, formatBytes(model.sizeBytes));
+        qCWarning(lcSpeech) << "WhisperModelManager: Download for" << model.id << "exceeded catalogued size ("
+                            << (currentSize + chunk.size()) << ">" << model.sizeBytes << "bytes). Aborting.";
+        setLastError(m_downloadAbortReason);
+        m_currentReply->abort();
+        return;
+    }
+
+    // 2. Write chunk and verify write result (prevent silent short writes / disk full)
+    const qint64 bytesWritten = m_partFile->write(chunk);
+    if (bytesWritten != chunk.size() || m_partFile->error() != QFile::NoError) {
+        const QString errStr = m_partFile->errorString();
+        m_downloadAbortReason = tr("Failed to write download data to disk for %1: %2")
+                                    .arg(model.name, errStr.isEmpty() ? tr("Short write or disk error") : errStr);
+        qCWarning(lcSpeech) << "WhisperModelManager: Short write or disk error while downloading" << model.id << ":"
+                            << m_downloadAbortReason;
+        setLastError(m_downloadAbortReason);
+        m_currentReply->abort();
+        return;
     }
 }
 
 void WhisperModelManager::onDownloadProgress(qint64 bytesReceived, qint64 bytesTotal) {
+    if (!m_currentReply || m_downloadingModelId.isEmpty()) {
+        return;
+    }
+
+    const int idx = findModelIndex(m_downloadingModelId);
+    if (idx < 0) {
+        return;
+    }
+
+    const auto& model = m_models[idx];
+
+    // Enforce catalogued size bound against advertised Content-Length and received bytes
+    if (model.sizeBytes > 0 && (bytesTotal > model.sizeBytes || bytesReceived > model.sizeBytes)) {
+        m_downloadAbortReason =
+            tr("Download size for %1 exceeds catalogued size of %2.").arg(model.name, formatBytes(model.sizeBytes));
+        qCWarning(lcSpeech) << "WhisperModelManager: Reported download size (" << qMax(bytesTotal, bytesReceived)
+                            << "bytes) exceeds catalogued size (" << model.sizeBytes << "bytes) for" << model.id
+                            << ". Aborting.";
+        setLastError(m_downloadAbortReason);
+        m_currentReply->abort();
+        return;
+    }
+
     m_currentBytesReceived = bytesReceived;
     if (bytesTotal > 0) {
         m_currentTotalBytes = bytesTotal;
@@ -428,16 +484,13 @@ void WhisperModelManager::onDownloadProgress(qint64 bytesReceived, qint64 bytesT
         m_lastSpeedTimeMs = elapsedMs;
     }
 
-    const int idx = findModelIndex(m_downloadingModelId);
-    if (idx >= 0) {
-        m_models[idx].progress = m_currentProgress;
-        m_models[idx].bytesReceived = bytesReceived;
-        m_models[idx].totalBytes = m_currentTotalBytes;
-        m_models[idx].speedFormatted = m_currentSpeedFormatted;
+    m_models[idx].progress = m_currentProgress;
+    m_models[idx].bytesReceived = bytesReceived;
+    m_models[idx].totalBytes = m_currentTotalBytes;
+    m_models[idx].speedFormatted = m_currentSpeedFormatted;
 
-        const QModelIndex modelIdx = index(idx);
-        emit dataChanged(modelIdx, modelIdx, {ProgressRole, BytesReceivedRole, TotalBytesRole, SpeedFormattedRole});
-    }
+    const QModelIndex modelIdx = index(idx);
+    emit dataChanged(modelIdx, modelIdx, {ProgressRole, BytesReceivedRole, TotalBytesRole, SpeedFormattedRole});
 
     emit downloadProgressChanged();
 }
@@ -452,6 +505,8 @@ void WhisperModelManager::onDownloadFinished() {
     const QNetworkReply::NetworkError error = m_currentReply->error();
     const int httpStatus = m_currentReply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
     const QString errorString = m_currentReply->errorString();
+    const QString abortReason = m_downloadAbortReason;
+    m_downloadAbortReason.clear();
 
     m_currentReply->deleteLater();
     m_currentReply = nullptr;
@@ -472,40 +527,90 @@ void WhisperModelManager::onDownloadFinished() {
     const QString partPath = modelsDirectory() + u"/"_s + model.fileName + u".part"_s;
     const QString finalPath = modelsDirectory() + u"/"_s + model.fileName;
 
-    if (error == QNetworkReply::NoError && (httpStatus >= 200 && httpStatus < 300)) {
-        QFile::remove(finalPath);
-        if (QFile::rename(partPath, finalPath)) {
-            qCDebug(lcSpeech) << "WhisperModelManager: Successfully downloaded and finalized" << finalPath;
-            m_models[idx].isDownloading = false;
-            m_models[idx].isInstalled = true;
-            m_models[idx].progress = 1.0;
-            const QFileInfo fi(finalPath);
-            m_models[idx].installedSizeBytes = fi.size();
-            m_models[idx].installedSizeFormatted = formatBytes(fi.size());
+    bool success = false;
+    QString failureMessage;
 
-            const QModelIndex modelIdx = index(idx);
-            emit dataChanged(
-                modelIdx, modelIdx,
-                {IsDownloadingRole, IsInstalledRole, ProgressRole, InstalledSizeFormattedRole, CanDeleteRole});
-
-            m_downloadingModelId.clear();
-            emit isDownloadingAnyChanged();
-            emit downloadProgressChanged();
-            emit modelStatusChanged();
-            emit selectedModelChanged();
-            emit modelDownloadFinished(modelId, true, QString());
-            checkDiskSpace();
-            return;
-        } else {
-            setLastError(tr("Failed to rename temporary download to destination: %1").arg(finalPath));
-        }
-    } else {
+    if (!abortReason.isEmpty()) {
+        failureMessage = abortReason;
+    } else if (error != QNetworkReply::NoError || httpStatus < 200 || httpStatus >= 300) {
         const QString fullErr = errorString.isEmpty() ? tr("HTTP error %1").arg(httpStatus) : errorString;
-        setLastError(tr("Download failed for %1: %2").arg(model.name, fullErr));
+        failureMessage = tr("Download failed for %1: %2").arg(model.name, fullErr);
+    } else {
+        // Network request reported 2xx success: perform size and integrity validation
+        const QFileInfo partInfo(partPath);
+        if (!partInfo.exists()) {
+            failureMessage = tr("Downloaded temporary file not found: %1").arg(partPath);
+        } else {
+            const qint64 actualSize = partInfo.size();
+            if (actualSize == 0) {
+                failureMessage = tr("Download failed for %1: received empty file.").arg(model.name);
+            } else if (model.sizeBytes > 0 && actualSize != model.sizeBytes) {
+                failureMessage =
+                    tr("Download size mismatch for %1: expected %2 (%3 bytes), but received %4 (%5 bytes).")
+                        .arg(model.name, formatBytes(model.sizeBytes), QString::number(model.sizeBytes),
+                             formatBytes(actualSize), QString::number(actualSize));
+            } else {
+                // Validate GGML magic header (0x67676d6c == "ggml")
+                QFile verifyFile(partPath);
+                if (!verifyFile.open(QIODevice::ReadOnly)) {
+                    failureMessage =
+                        tr("Failed to open downloaded file for validation: %1").arg(verifyFile.errorString());
+                } else {
+                    const QByteArray header = verifyFile.read(4);
+                    verifyFile.close();
+
+                    constexpr quint32 kGgmlMagic = 0x67676d6c;
+                    quint32 magicVal = 0;
+                    if (header.size() == 4) {
+                        std::memcpy(&magicVal, header.constData(), 4);
+                    }
+
+                    if (magicVal != kGgmlMagic) {
+                        failureMessage =
+                            tr("Download integrity check failed for %1: invalid GGML model format.").arg(model.name);
+                    } else {
+                        // All validations passed. Atomically replace final file.
+                        QFile::remove(finalPath);
+                        if (QFile::rename(partPath, finalPath)) {
+                            success = true;
+                        } else {
+                            failureMessage =
+                                tr("Failed to rename temporary download to destination: %1").arg(finalPath);
+                        }
+                    }
+                }
+            }
+        }
     }
 
-    // Cleanup partial file on error
+    if (success) {
+        qCDebug(lcSpeech) << "WhisperModelManager: Successfully validated, downloaded, and finalized" << finalPath;
+        m_models[idx].isDownloading = false;
+        m_models[idx].isInstalled = true;
+        m_models[idx].progress = 1.0;
+        const QFileInfo fi(finalPath);
+        m_models[idx].installedSizeBytes = fi.size();
+        m_models[idx].installedSizeFormatted = formatBytes(fi.size());
+
+        const QModelIndex modelIdx = index(idx);
+        emit dataChanged(modelIdx, modelIdx,
+                         {IsDownloadingRole, IsInstalledRole, ProgressRole, InstalledSizeFormattedRole, CanDeleteRole});
+
+        m_downloadingModelId.clear();
+        emit isDownloadingAnyChanged();
+        emit downloadProgressChanged();
+        emit modelStatusChanged();
+        emit selectedModelChanged();
+        emit modelDownloadFinished(modelId, true, QString());
+        checkDiskSpace();
+        return;
+    }
+
+    // Failure cleanup
+    qCWarning(lcSpeech) << "WhisperModelManager: Download failed for" << model.id << ":" << failureMessage;
+    setLastError(failureMessage);
     QFile::remove(partPath);
+
     m_models[idx].isDownloading = false;
     m_models[idx].progress = 0.0;
     m_models[idx].bytesReceived = 0;
@@ -517,36 +622,36 @@ void WhisperModelManager::onDownloadFinished() {
     m_downloadingModelId.clear();
     emit isDownloadingAnyChanged();
     emit downloadProgressChanged();
-    emit modelDownloadFinished(modelId, false, m_lastError);
+    emit modelDownloadFinished(modelId, false, failureMessage);
     checkDiskSpace();
 }
 
 void WhisperModelManager::initPresets() {
     m_models = {
         {u"tiny.en"_s, tr("Tiny (English)"), u"ggml-tiny.en.bin"_s,
-         QString::fromLatin1(kHfBaseUrl) + u"ggml-tiny.en.bin"_s, 77651000, u"~75 MiB"_s,
+         QString::fromLatin1(kHfBaseUrl) + u"ggml-tiny.en.bin"_s, 77704715, u"~74 MiB"_s,
          tr("Fastest English dictation with minimal memory (~390 MB RAM)")},
         {u"tiny"_s, tr("Tiny (Multilingual)"), u"ggml-tiny.bin"_s, QString::fromLatin1(kHfBaseUrl) + u"ggml-tiny.bin"_s,
-         77770000, u"~75 MiB"_s, tr("Fast multilingual dictation with minimal memory (~390 MB RAM)")},
+         77691713, u"~74 MiB"_s, tr("Fast multilingual dictation with minimal memory (~390 MB RAM)")},
         {u"base.en"_s, tr("Base (English)"), u"ggml-base.en.bin"_s,
-         QString::fromLatin1(kHfBaseUrl) + u"ggml-base.en.bin"_s, 147951000, u"~142 MiB"_s,
+         QString::fromLatin1(kHfBaseUrl) + u"ggml-base.en.bin"_s, 147964211, u"~141 MiB"_s,
          tr("Fast English transcription with improved accuracy (~500 MB RAM)")},
         {u"base"_s, tr("Base (Multilingual)"), u"ggml-base.bin"_s, QString::fromLatin1(kHfBaseUrl) + u"ggml-base.bin"_s,
-         147964000, u"~142 MiB"_s, tr("Fast multilingual transcription with improved accuracy (~500 MB RAM)")},
+         147951465, u"~141 MiB"_s, tr("Fast multilingual transcription with improved accuracy (~500 MB RAM)")},
         {u"small.en"_s, tr("Small (English)"), u"ggml-small.en.bin"_s,
-         QString::fromLatin1(kHfBaseUrl) + u"ggml-small.en.bin"_s, 487600000, u"~466 MiB"_s,
+         QString::fromLatin1(kHfBaseUrl) + u"ggml-small.en.bin"_s, 487614201, u"~465 MiB"_s,
          tr("High accuracy English transcription, great balance (~1.0 GB RAM)")},
         {u"small"_s, tr("Small (Multilingual)"), u"ggml-small.bin"_s,
-         QString::fromLatin1(kHfBaseUrl) + u"ggml-small.bin"_s, 487600000, u"~466 MiB"_s,
+         QString::fromLatin1(kHfBaseUrl) + u"ggml-small.bin"_s, 487601967, u"~465 MiB"_s,
          tr("High accuracy multilingual transcription (~1.0 GB RAM)")},
         {u"medium.en"_s, tr("Medium (English)"), u"ggml-medium.en.bin"_s,
-         QString::fromLatin1(kHfBaseUrl) + u"ggml-medium.en.bin"_s, 1533000000, u"~1.5 GiB"_s,
+         QString::fromLatin1(kHfBaseUrl) + u"ggml-medium.en.bin"_s, 1533774781, u"~1.4 GiB"_s,
          tr("Very high accuracy English transcription (~2.6 GB RAM)")},
         {u"medium"_s, tr("Medium (Multilingual)"), u"ggml-medium.bin"_s,
-         QString::fromLatin1(kHfBaseUrl) + u"ggml-medium.bin"_s, 1533000000, u"~1.5 GiB"_s,
+         QString::fromLatin1(kHfBaseUrl) + u"ggml-medium.bin"_s, 1533763059, u"~1.4 GiB"_s,
          tr("Very high accuracy multilingual transcription (~2.6 GB RAM)")},
         {u"large-v3-turbo"_s, tr("Large v3 Turbo (Multilingual)"), u"ggml-large-v3-turbo.bin"_s,
-         QString::fromLatin1(kHfBaseUrl) + u"ggml-large-v3-turbo.bin"_s, 1620000000, u"~1.6 GiB"_s,
+         QString::fromLatin1(kHfBaseUrl) + u"ggml-large-v3-turbo.bin"_s, 1624555275, u"~1.5 GiB"_s,
          tr("State-of-the-art accuracy with fast 4-layer decoder (~3.1 GB RAM)")}};
 }
 
@@ -560,9 +665,9 @@ void WhisperModelManager::scanInstalledModels() {
         const QString fallbackPath = fallbackDir + u"/"_s + item.fileName;
 
         QString foundPath;
-        if (QFile::exists(primaryPath)) {
+        if (QFile::exists(primaryPath) && QFileInfo(primaryPath).size() > 0) {
             foundPath = primaryPath;
-        } else if (QFile::exists(fallbackPath)) {
+        } else if (QFile::exists(fallbackPath) && QFileInfo(fallbackPath).size() > 0) {
             foundPath = fallbackPath;
         }
 
