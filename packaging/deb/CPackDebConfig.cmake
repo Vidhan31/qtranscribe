@@ -19,7 +19,7 @@ set(CPACK_DEBIAN_PACKAGE_DESCRIPTION "Modern Wayland speech-to-text transcriptio
 # to prevent it from looking for private Qt symbols in distro system directories.
 # Instead, define explicit curated runtime dependencies for Ubuntu 24.04:
 set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS OFF)
-set(CPACK_DEBIAN_PACKAGE_DEPENDS "libc6 (>= 2.38), libstdc++6 (>= 13.2.0), libgcc-s1 (>= 3.3.1), libgl1, libegl1, libfontconfig1, libfreetype6, libglib2.0-0t64, libdbus-1-3, libasound2t64, libpulse0, libwayland-client0, libwayland-cursor0, libwayland-egl1, libxkbcommon0, libsecret-1-0, libevdev2, libcap2, libcap2-bin")
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "libc6 (>= 2.38), libstdc++6 (>= 13.2.0), libgcc-s1 (>= 3.3.1), libgl1, libegl1, libvulkan1, libfontconfig1, libfreetype6, libglib2.0-0t64, libdbus-1-3, libasound2t64, libpulse0, libwayland-client0, libwayland-cursor0, libwayland-egl1, libxkbcommon0, libsecret-1-0, libevdev2, libcap2, libcap2-bin")
 
 set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA
     "${CMAKE_CURRENT_SOURCE_DIR}/packaging/deb/postinst;${CMAKE_CURRENT_SOURCE_DIR}/packaging/deb/prerm;${CMAKE_CURRENT_SOURCE_DIR}/packaging/deb/postrm"

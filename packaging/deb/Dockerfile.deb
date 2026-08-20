@@ -33,6 +33,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxkbcommon-dev \
     libgl1-mesa-dev \
     libegl1-mesa-dev \
+    libvulkan-dev \
+    glslc \
+    spirv-headers \
     libfontconfig1-dev \
     libfreetype6-dev \
     libglib2.0-dev \
@@ -77,6 +80,9 @@ RUN git clone --depth 1 --branch 0.15.0 https://github.com/frankosterfeld/qtkeyc
 # Pre-clone wl-clipboard source in cached layer so CMake does not download it during every build
 RUN git clone --depth 1 --branch v2.3.0 https://github.com/bugaevc/wl-clipboard.git /opt/wl-clipboard-src
 
+# Pre-clone whisper.cpp source in cached layer so CMake does not download it during every build
+RUN git clone --depth 1 --branch v1.9.3 https://github.com/ggml-org/whisper.cpp.git /opt/whisper-src
+
 # Build QTranscribe application and package Debian package with CPack
 WORKDIR /build
 COPY . /build/src-tree
@@ -92,6 +98,7 @@ RUN cmake -S /build/src-tree -B /build/build -G Ninja \
         -DENABLE_CPACK_DEB=ON \
         -DBUILD_WL_CLIPBOARD=ON \
         -DFETCHCONTENT_SOURCE_DIR_WL_CLIPBOARD_SRC=/opt/wl-clipboard-src \
+        -DFETCHCONTENT_SOURCE_DIR_WHISPER=/opt/whisper-src \
         ${APP_VERSION:+-DQTRANSCRIBE_VERSION=${APP_VERSION}} && \
     cmake --build /build/build && \
     cpack -G DEB

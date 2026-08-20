@@ -28,6 +28,10 @@ RUN pacman-key --init && \
         libcap \
         wayland \
         wl-clipboard \
+        vulkan-headers \
+        vulkan-icd-loader \
+        shaderc \
+        spirv-headers \
         hicolor-icon-theme && \
     pacman -Scc --noconfirm
 
@@ -35,6 +39,10 @@ RUN pacman-key --init && \
 RUN useradd -m -s /bin/bash builduser && \
     echo "builduser ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/builduser && \
     chmod 0440 /etc/sudoers.d/builduser
+
+# Pre-clone whisper.cpp source in cached layer so CMake does not download it during every build
+RUN git clone --depth 1 --branch v1.9.3 https://github.com/ggml-org/whisper.cpp.git /opt/whisper-src && \
+    chown -R builduser:builduser /opt/whisper-src
 
 WORKDIR /build
 

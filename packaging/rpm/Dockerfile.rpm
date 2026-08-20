@@ -30,7 +30,15 @@ RUN dnf update -y && dnf install -y \
     wayland-devel \
     wayland-protocols-devel \
     wl-clipboard \
+    git \
+    vulkan-loader-devel \
+    vulkan-headers \
+    glslc \
+    spirv-headers-devel \
     && dnf clean all
+
+# Pre-clone whisper.cpp source in cached layer so CMake does not download it during every build
+RUN git clone --depth 1 --branch v1.9.3 https://github.com/ggml-org/whisper.cpp.git /opt/whisper-src
 
 WORKDIR /build
 
