@@ -19,7 +19,10 @@ public:
     static bool extractPcmSamples(const QByteArray& wavData, std::vector<float>& outPcmf32);
 
     void cancel(uint64_t requestId = 0);
+    void cancelLoad(uint64_t loadRequestId = 0);
+    void resetAbort();
     bool isAborted(uint64_t requestId = 0) const;
+    bool isLoadAborted(uint64_t loadRequestId = 0) const;
 
 public slots:
     void loadModel(uint64_t loadRequestId, const QString& modelPath, bool useGpu = true);
@@ -38,5 +41,6 @@ private:
     whisper_context* m_ctx = nullptr;
     std::atomic<bool> m_abortRequested {false};
     std::atomic<uint64_t> m_cancelledRequestId {0};
+    std::atomic<uint64_t> m_cancelledLoadRequestId {0};
     QString m_activeDevice;
 };

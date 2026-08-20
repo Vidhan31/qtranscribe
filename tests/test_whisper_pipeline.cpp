@@ -194,17 +194,40 @@ private slots:
         // Initially not aborted
         QVERIFY(!worker.isAborted(1));
         QVERIFY(!worker.isAborted(0));
+        QVERIFY(!worker.isLoadAborted(1));
+        QVERIFY(!worker.isLoadAborted(0));
 
-        // Cancel specific request ID
+        // Cancel specific transcribe request ID (42)
         worker.cancel(42);
         QVERIFY(worker.isAborted(42));
         QVERIFY(worker.isAborted(10));
-        QVERIFY(worker.isAborted(0));
+        QVERIFY(!worker.isAborted(50));
+        QVERIFY(!worker.isAborted(0));
+        QVERIFY(!worker.isLoadAborted(1));
 
-        // Cancel all (requestId = 0)
+        // Cancel specific load request ID (5)
+        worker.cancelLoad(5);
+        QVERIFY(worker.isLoadAborted(5));
+        QVERIFY(worker.isLoadAborted(2));
+        QVERIFY(!worker.isLoadAborted(10));
+        QVERIFY(!worker.isLoadAborted(0));
+
+        // Cancel all globally (requestId = 0)
         worker.cancel(0);
         QVERIFY(worker.isAborted(0));
         QVERIFY(worker.isAborted(100));
+        QVERIFY(worker.isLoadAborted(0));
+        QVERIFY(worker.isLoadAborted(100));
+
+        // Reset global abort
+        worker.resetAbort();
+        QVERIFY(!worker.isAborted(0));
+        QVERIFY(!worker.isLoadAborted(0));
+        // Previously cancelled request IDs remain cancelled
+        QVERIFY(worker.isAborted(42));
+        QVERIFY(worker.isLoadAborted(5));
+        QVERIFY(!worker.isAborted(50));
+        QVERIFY(!worker.isLoadAborted(10));
     }
 
     void testClientLifecycleAndGracefulShutdown() {

@@ -178,12 +178,10 @@ WhisperWorker::~WhisperWorker() {
 }
 
 void WhisperWorker::loadModel(uint64_t loadRequestId, const QString& modelPath, bool useGpu) {
-    if (isAborted(loadRequestId)) {
+    if (isLoadAborted(loadRequestId)) {
         qCDebug(lcSpeech) << "WhisperWorker: Model load request" << loadRequestId << "cancelled prior to processing";
         return;
     }
-
-    m_abortRequested.store(false, std::memory_order_release);
 
     if (m_ctx) {
         whisper_free(m_ctx);
@@ -222,7 +220,7 @@ void WhisperWorker::loadModel(uint64_t loadRequestId, const QString& modelPath, 
         if (!lctx || !lctx->file.is_open()) {
             return 0;
         }
-        if (lctx->worker && lctx->worker->isAborted(lctx->loadRequestId)) {
+        if (lctx->worker && lctx->worker->isLoadAborted(lctx->loadRequestId)) {
             lctx->file.close();
             return 0;
         }
@@ -239,7 +237,7 @@ void WhisperWorker::loadModel(uint64_t loadRequestId, const QString& modelPath, 
         if (!lctx || !lctx->file.is_open()) {
             return true;
         }
-        if (lctx->worker && lctx->worker->isAborted(lctx->loadRequestId)) {
+        if (lctx->worker && lctx->worker->isLoadAborted(lctx->loadRequestId)) {
             return true;
         }
         return lctx->file.eof();
@@ -266,7 +264,7 @@ void WhisperWorker::loadModel(uint64_t loadRequestId, const QString& modelPath, 
         m_ctx = nullptr;
     }
 
-    if (isAborted(loadRequestId)) {
+    if (isLoadAborted(loadRequestId)) {
         qCDebug(lcSpeech) << "WhisperWorker: Model loading cancelled for request" << loadRequestId;
         if (m_ctx) {
             whisper_free(m_ctx);
@@ -303,12 +301,28 @@ void WhisperWorker::unloadModel() {
     }
 }
 
+void WhisperWorker::resetAbort() {
+    m_abortRequested.store(false, std::memory_order_release);
+}
+
 void WhisperWorker::cancel(uint64_t requestId) {
-    m_abortRequested.store(true, std::memory_order_release);
-    if (requestId > 0) {
+    if (requestId == 0) {
+        m_abortRequested.store(true, std::memory_order_release);
+    } else {
         uint64_t current = m_cancelledRequestId.load(std::memory_order_relaxed);
         while (current < requestId && !m_cancelledRequestId.compare_exchange_weak(
                                           current, requestId, std::memory_order_release, std::memory_order_relaxed)) { }
+    }
+}
+
+void WhisperWorker::cancelLoad(uint64_t loadRequestId) {
+    if (loadRequestId == 0) {
+        m_abortRequested.store(true, std::memory_order_release);
+    } else {
+        uint64_t current = m_cancelledLoadRequestId.load(std::memory_order_relaxed);
+        while (current < loadRequestId &&
+               !m_cancelledLoadRequestId.compare_exchange_weak(current, loadRequestId, std::memory_order_release,
+                                                               std::memory_order_relaxed)) { }
     }
 }
 
@@ -325,6 +339,19 @@ bool WhisperWorker::isAborted(uint64_t requestId) const {
     return false;
 }
 
+bool WhisperWorker::isLoadAborted(uint64_t loadRequestId) const {
+    if (m_abortRequested.load(std::memory_order_acquire)) {
+        return true;
+    }
+    if (QThread::currentThread() && QThread::currentThread()->isInterruptionRequested()) {
+        return true;
+    }
+    if (loadRequestId > 0 && loadRequestId <= m_cancelledLoadRequestId.load(std::memory_order_acquire)) {
+        return true;
+    }
+    return false;
+}
+
 void WhisperWorker::transcribe(uint64_t requestId, const QByteArray& wavData, const QString& language,
                                const QString& prompt) {
     if (requestId > 0 && requestId <= m_cancelledRequestId.load(std::memory_order_acquire)) {
@@ -332,7 +359,10 @@ void WhisperWorker::transcribe(uint64_t requestId, const QByteArray& wavData, co
         return;
     }
 
-    m_abortRequested.store(false, std::memory_order_release);
+    if (isAborted(requestId)) {
+        qCDebug(lcSpeech) << "WhisperWorker: Transcription request" << requestId << "cancelled prior to processing";
+        return;
+    }
 
     if (!m_ctx) {
         qWarning() << "WhisperWorker: Transcribe called but model is not loaded";

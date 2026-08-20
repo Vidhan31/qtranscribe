@@ -230,11 +230,14 @@ void WhisperSttClient::checkModelStatus() {
 
 void WhisperSttClient::loadModel(const QString& customPath) {
     const QString path = customPath.isEmpty() ? resolveModelPath() : customPath;
+    if (m_worker && m_activeLoadRequestId > 0) {
+        m_worker->cancelLoad(m_activeLoadRequestId);
+    }
     const uint64_t loadId = m_nextLoadRequestId++;
     m_activeLoadRequestId = loadId;
 
     if (m_worker) {
-        m_worker->cancel(0);
+        m_worker->resetAbort();
     }
 
     if (!QFile::exists(path)) {
@@ -253,6 +256,9 @@ void WhisperSttClient::loadModel(const QString& customPath) {
 }
 
 void WhisperSttClient::unloadModel() {
+    if (m_worker && m_activeLoadRequestId > 0) {
+        m_worker->cancelLoad(m_activeLoadRequestId);
+    }
     m_activeLoadRequestId = m_nextLoadRequestId++;
     m_modelLoaded = false;
     m_loadedModelPath.clear();
@@ -290,6 +296,10 @@ void WhisperSttClient::transcribe(const QByteArray& wavData) {
     m_activeRequestId = reqId;
     setBusy(true);
     setLastError({});
+
+    if (m_worker) {
+        m_worker->resetAbort();
+    }
 
     QSettings settings;
     const QString language = settings.value(u"Groq/Language"_s, QString()).toString();
