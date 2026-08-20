@@ -252,8 +252,10 @@ void WhisperWorker::loadModel(uint64_t loadRequestId, const QString& modelPath, 
 
     whisper_context_params cparams = whisper_context_default_params();
     cparams.use_gpu = useGpu;
+    cparams.gpu_device = 0;
     cparams.flash_attn = false;
 
+    [[maybe_unused]] bool gpuFallback = false;
     try {
         m_ctx = whisper_init_with_params(&loader, cparams);
     } catch (const std::exception& e) {
@@ -262,6 +264,31 @@ void WhisperWorker::loadModel(uint64_t loadRequestId, const QString& modelPath, 
     } catch (...) {
         qWarning() << "WhisperWorker: Unknown exception during whisper_init_with_params";
         m_ctx = nullptr;
+    }
+
+    if (!m_ctx && useGpu && !isLoadAborted(loadRequestId)) {
+        qWarning() << "WhisperWorker: GPU initialization failed for" << modelPath
+                   << ". Falling back to CPU inference...";
+        gpuFallback = true;
+        if (loaderCtx.file.is_open()) {
+            loaderCtx.file.clear();
+            loaderCtx.file.seekg(0, std::ios::beg);
+        } else {
+            loaderCtx.file.open(modelPath.toStdString(), std::ios::binary);
+        }
+
+        if (loaderCtx.file.is_open()) {
+            cparams.use_gpu = false;
+            try {
+                m_ctx = whisper_init_with_params(&loader, cparams);
+            } catch (const std::exception& e) {
+                qWarning() << "WhisperWorker: Exception during CPU fallback whisper_init_with_params:" << e.what();
+                m_ctx = nullptr;
+            } catch (...) {
+                qWarning() << "WhisperWorker: Unknown exception during CPU fallback whisper_init_with_params";
+                m_ctx = nullptr;
+            }
+        }
     }
 
     if (isLoadAborted(loadRequestId)) {
@@ -281,7 +308,13 @@ void WhisperWorker::loadModel(uint64_t loadRequestId, const QString& modelPath, 
     }
 
 #if defined(GGML_USE_VULKAN)
-    m_activeDevice = useGpu ? u"GPU (Vulkan)"_s : u"CPU"_s;
+    if (useGpu && !gpuFallback) {
+        m_activeDevice = u"GPU (Vulkan)"_s;
+    } else if (gpuFallback) {
+        m_activeDevice = u"CPU (Fallback)"_s;
+    } else {
+        m_activeDevice = u"CPU"_s;
+    }
 #else
     m_activeDevice = u"CPU"_s;
 #endif
