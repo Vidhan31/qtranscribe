@@ -52,6 +52,7 @@ compile_commands.json
 /_CPack_Packages/
 /dist/
 /src/keyinjectord/build/
+/QTranscribe
 
 # Qt Creator
 *.user

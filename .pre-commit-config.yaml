@@ -32,7 +32,7 @@ repos:
       - id: qmllint
         name: QML Linting (qmllint)
         description: Verify QML files against qmllint rules
-        entry: bash -c 'if command -v qmllint >/dev/null 2>&1; then exec qmllint "$@"; else exec qmllint-qt6 "$@"; fi' --
+        entry: bash -c 'if command -v qmllint >/dev/null 2>&1; then exec qmllint -I build -I build-release -I build-relwithdebinfo "$@"; else exec qmllint-qt6 -I build -I build-release -I build-relwithdebinfo "$@"; fi' --
         language: system
         files: ^src/ui/.*\.qml$
         types: [file]

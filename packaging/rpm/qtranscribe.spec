@@ -53,14 +53,15 @@ and seamless desktop integration on Wayland environments (Plasma 6+, GNOME 49+).
 
 %check
 %ctest
-desktop-file-validate %{buildroot}%{_datadir}/applications/qtranscribe.desktop
+desktop-file-validate %{buildroot}%{_datadir}/applications/io.github.qtranscribe.desktop
 
 %files
 %license LICENSE
 %doc README.md
 %{_bindir}/qtranscribe
 %caps(cap_dac_override=p) %{_bindir}/keyinjectord
-%{_datadir}/applications/qtranscribe.desktop
+%{_datadir}/applications/io.github.qtranscribe.desktop
+%{_datadir}/icons/hicolor/*/apps/io.github.qtranscribe.png
 %{_datadir}/icons/hicolor/*/apps/qtranscribe.png
 %{_datadir}/icons/hicolor/*/status/qtranscribe-tray*.svg
 

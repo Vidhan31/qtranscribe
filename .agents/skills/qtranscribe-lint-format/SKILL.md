@@ -18,14 +18,10 @@ Commands and workflows for formatting C++ and QML files, linting QML components,
 | Workflow / Tool | Scope | Command | Description |
 | :--- | :--- | :--- | :--- |
 | **Pre-Commit (All)** | Whole Project | `pre-commit run --all-files` | Runs all formatters, linters, and hygiene checks on all files |
-| **Pre-Commit (Staged)** | Staged Files | `pre-commit run` | Runs checks only on files staged with `git add` |
 | **CMake: Format All** | C++ & QML | `cmake --build build --target format` | Formats all C++ and QML files inplace via CMake |
-| **CMake: Format C++** | C++ Files | `cmake --build build --target format-cpp` | Runs `clang-format` on all `src/**/*.cpp` and `src/**/*.h` |
-| **CMake: Format QML** | QML Files | `cmake --build build --target format-qml` | Runs `qmlformat` on all `src/ui/**/*.qml` |
-| **CMake: Check C++** | C++ Files | `cmake --build build --target format-check-cpp` | Dry-run check with `--Werror` (returns non-zero on diff) |
-| **Direct: C++ Format** | C++ Files | `clang-format -i $(find src -name "*.cpp" -o -name "*.h")` | Direct `clang-format` invocation |
+| **CMake: Lint QML** | QML Files | `cmake --build build --target all_qmllint` | Lints all QML files via CMake build target |
+| **Direct: QML Lint** | QML Files | `qmllint-qt6 -I build -I build-release -I build-relwithdebinfo $(find src/ui -name "*.qml")` | Direct `qmllint` invocation with module search path |
 | **Direct: QML Format** | QML Files | `qmlformat --inplace $(find src -name "*.qml")` | Direct `qmlformat` invocation |
-| **Direct: QML Lint** | QML Files | `qmllint $(find src/ui -name "*.qml")` | Direct `qmllint` invocation |
 
 ---
 

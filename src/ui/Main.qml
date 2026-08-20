@@ -34,7 +34,8 @@ ApplicationWindow {
         id: trayIcon
         visible: true
         icon.name: SpeechController.recording ? TrayIconHelper.trayIconRecordingName : TrayIconHelper.trayIconName
-        icon.source: SpeechController.recording ? TrayIconHelper.trayIconRecordingPath : TrayIconHelper.trayIconPath
+        icon.source: SpeechController.recording ? TrayIconHelper.trayIconRecordingPath(Theme.isDark) :
+                                                  TrayIconHelper.trayIconPath(Theme.isDark)
         tooltip: qsTr("QTranscribe")
 
         menu: Platform.Menu {

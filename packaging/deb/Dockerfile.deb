@@ -129,9 +129,10 @@ RUN set -eux; \
     test "$(readlink -f /usr/bin/keyinjectord)" = "/opt/qtranscribe/bin/keyinjectord"; \
     \
     echo "--- Checking desktop file & icons in /usr/share ---"; \
-    test -f /usr/share/applications/qtranscribe.desktop; \
-    desktop-file-validate /usr/share/applications/qtranscribe.desktop; \
+    test -f /usr/share/applications/io.github.qtranscribe.desktop; \
+    desktop-file-validate /usr/share/applications/io.github.qtranscribe.desktop; \
     test -f /usr/share/icons/hicolor/512x512/apps/qtranscribe.png; \
+    test -f /usr/share/icons/hicolor/512x512/apps/io.github.qtranscribe.png; \
     \
     echo "--- Checking keyinjectord capability (cap_dac_override) ---"; \
     getcap /opt/qtranscribe/bin/keyinjectord | grep -E 'cap_dac_override'; \
