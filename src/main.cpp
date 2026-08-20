@@ -9,6 +9,7 @@
 #include "TranscriptionModel.h"
 
 #include "GlobalShortcutManager.h"
+#include "WhisperSttClient.h"
 
 #include <QApplication>
 #include <QCommandLineOption>
@@ -100,6 +101,7 @@ int main(int argc, char* argv[]) {
 
     auto* api = engine.singletonInstance<GroqApiClient*>("QTranscribe", "GroqApiClient");
     auto* stt = engine.singletonInstance<GroqSttClient*>("QTranscribe", "GroqSttClient");
+    auto* whisperStt = engine.singletonInstance<WhisperSttClient*>("QTranscribe", "WhisperSttClient");
     auto* llm = engine.singletonInstance<GroqLlmClient*>("QTranscribe", "GroqLlmClient");
     auto* tracker = engine.singletonInstance<GroqUsageTracker*>("QTranscribe", "GroqUsageTracker");
     auto* recorder = engine.singletonInstance<AudioRecorder*>("QTranscribe", "AudioRecorder");
@@ -120,6 +122,7 @@ int main(int argc, char* argv[]) {
         controller->setShortcutManager(shortcut);
         controller->setAudioRecorder(recorder);
         controller->setSttClient(stt);
+        controller->setWhisperSttClient(whisperStt);
         controller->setLlmClient(llm);
         controller->setTextInjector(injector);
         controller->setHistoryModel(history);

@@ -111,28 +111,34 @@ ApplicationWindow {
         }
         ListElement {
             section: "PREFERENCES"
+            title: "Offline Dictation"
+            iconSource: "qrc:/qt/qml/QTranscribe/assets/icons/bolt.svg"
+            navIndex: 5
+        }
+        ListElement {
+            section: "PREFERENCES"
             title: "Text Enhancement"
             iconSource: "qrc:/qt/qml/QTranscribe/assets/icons/sparkles.svg"
-            navIndex: 5
+            navIndex: 6
         }
         ListElement {
             section: "PREFERENCES"
             title: "System & Typing"
             iconSource: "qrc:/qt/qml/QTranscribe/assets/icons/keyboard.svg"
-            navIndex: 6
+            navIndex: 7
         }
 
         ListElement {
             section: "INFO"
             title: "About"
             iconSource: "qrc:/qt/qml/QTranscribe/assets/icons/info.svg"
-            navIndex: 7
+            navIndex: 8
         }
         ListElement {
             section: "INFO"
             title: "License"
             iconSource: "qrc:/qt/qml/QTranscribe/assets/icons/license.svg"
-            navIndex: 8
+            navIndex: 9
         }
     }
 
@@ -310,6 +316,17 @@ ApplicationWindow {
                     clip: true
 
                     SpeechSettingsPage {
+                        width: parent.width
+                    }
+                }
+
+                ScrollView {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    contentWidth: availableWidth
+                    clip: true
+
+                    OfflineSettingsPage {
                         width: parent.width
                     }
                 }
