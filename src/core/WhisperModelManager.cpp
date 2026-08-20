@@ -373,6 +373,11 @@ bool WhisperModelManager::deleteModel(const QString& modelId) {
     if (QFile::exists(primaryPath)) {
         QFile::remove(primaryPath);
     }
+    const QString appData = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    const QString fallbackPath = appData + u"/models/"_s + model.fileName;
+    if (QFile::exists(fallbackPath)) {
+        QFile::remove(fallbackPath);
+    }
 
     m_models[idx].isInstalled = false;
     m_models[idx].installedSizeBytes = 0;

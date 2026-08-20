@@ -223,11 +223,13 @@ void WhisperWorker::loadModel(uint64_t loadRequestId, const QString& modelPath, 
             return 0;
         }
         if (lctx->worker && lctx->worker->isAborted(lctx->loadRequestId)) {
-            throw std::runtime_error("Whisper model loading aborted");
+            lctx->file.close();
+            return 0;
         }
         lctx->file.read(static_cast<char*>(output), static_cast<std::streamsize>(read_size));
         if (!lctx->file && lctx->file.bad()) {
-            throw std::runtime_error("Whisper model file read error");
+            lctx->file.close();
+            return 0;
         }
         return static_cast<size_t>(lctx->file.gcount());
     };
@@ -254,7 +256,15 @@ void WhisperWorker::loadModel(uint64_t loadRequestId, const QString& modelPath, 
     cparams.use_gpu = useGpu;
     cparams.flash_attn = false;
 
-    m_ctx = whisper_init_with_params(&loader, cparams);
+    try {
+        m_ctx = whisper_init_with_params(&loader, cparams);
+    } catch (const std::exception& e) {
+        qWarning() << "WhisperWorker: Exception during whisper_init_with_params:" << e.what();
+        m_ctx = nullptr;
+    } catch (...) {
+        qWarning() << "WhisperWorker: Unknown exception during whisper_init_with_params";
+        m_ctx = nullptr;
+    }
 
     if (isAborted(loadRequestId)) {
         qCDebug(lcSpeech) << "WhisperWorker: Model loading cancelled for request" << loadRequestId;
