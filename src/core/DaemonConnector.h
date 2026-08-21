@@ -25,7 +25,7 @@ public:
     void stopDaemon();
     void restartService();
 
-    bool sendCommand(keyinjectord::Opcode opcode);
+    bool sendCommand(keyinjectord::Opcode opcode, int timeoutMs = 2000);
     bool ensureDaemonRunning();
     QString socketPath() const;
 
@@ -40,7 +40,6 @@ private slots:
     void onConnected();
     void onDisconnected();
     void onErrorOccurred(QLocalSocket::LocalSocketError error);
-    void onReadyRead();
 
 private:
     void setLastError(const QString& error);

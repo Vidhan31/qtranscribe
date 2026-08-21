@@ -108,6 +108,36 @@ private slots:
         client.disconnectFromServer();
     }
 
+    void testDeviceErrorResponse() {
+        QTemporaryDir tempDir;
+        QVERIFY(tempDir.isValid());
+        std::string sockPath = (tempDir.path() + "/test_ipc_error.sock").toStdString();
+
+        class FailingMockDevice : public keyinjectord::IDevice {
+        public:
+            bool sendCtrlV() override { return false; }
+        } failingDevice;
+
+        keyinjectord::IpcServer server(sockPath, failingDevice);
+        ServerRunner runner(server);
+
+        QLocalSocket client;
+        client.connectToServer(QString::fromStdString(sockPath));
+        QVERIFY(client.waitForConnected(2000));
+
+        // Send binary Paste opcode (0x01)
+        const char cmdByte = static_cast<char>(keyinjectord::Opcode::Paste);
+        client.write(&cmdByte, 1);
+        client.flush();
+
+        QVERIFY(client.waitForReadyRead(2000));
+        QByteArray response = client.readAll();
+        QCOMPARE(response.size(), 1);
+        QCOMPARE(static_cast<uint8_t>(response[0]), static_cast<uint8_t>(keyinjectord::ResponseStatus::DeviceError));
+
+        client.disconnectFromServer();
+    }
+
     void testUnknownOpcodeDisconnect() {
         QTemporaryDir tempDir;
         QVERIFY(tempDir.isValid());
