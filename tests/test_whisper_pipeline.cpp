@@ -15,6 +15,8 @@
 #include <cmath>
 #include <vector>
 
+using namespace Qt::StringLiterals;
+
 namespace {
 QByteArray createWav(uint32_t sampleRate, uint16_t numChannels, uint16_t bitsPerSample, uint16_t audioFormat,
                      const QByteArray& pcmData) {
@@ -171,18 +173,13 @@ private slots:
     void testStaleModelLoadHandling() {
         WhisperSttClient client;
 
-        // Verify initial state
         QVERIFY(!client.isModelLoaded());
         QVERIFY(client.loadedModelPath().isEmpty());
 
-        // Simulate a stale load response from a superseded request (e.g. loadId 99 while active loadId is 100)
-        // By invoking loadModel, active loadId becomes 1
-        client.loadModel(QStringLiteral("/nonexistent/dummy/model.bin"));
+        client.loadModel(u"/nonexistent/dummy/model.bin"_s);
         QVERIFY(!client.isModelLoaded());
         QVERIFY(client.loadedModelPath().isEmpty());
 
-        // Active loadId is 1. If worker emits response for loadId 0 or 99, it must be ignored.
-        // Also verify unloadModel resets loadedModelPath
         client.unloadModel();
         QVERIFY(!client.isModelLoaded());
         QVERIFY(client.loadedModelPath().isEmpty());
@@ -191,7 +188,6 @@ private slots:
     void testWorkerAbortLogic() {
         WhisperWorker worker;
 
-        // Initially not aborted
         QVERIFY(!worker.isAborted(1));
         QVERIFY(!worker.isAborted(0));
         QVERIFY(!worker.isLoadAborted(1));
@@ -223,7 +219,6 @@ private slots:
         worker.resetAbort();
         QVERIFY(!worker.isAborted(0));
         QVERIFY(!worker.isLoadAborted(0));
-        // Previously cancelled request IDs remain cancelled
         QVERIFY(worker.isAborted(42));
         QVERIFY(worker.isLoadAborted(5));
         QVERIFY(!worker.isAborted(50));
@@ -240,12 +235,10 @@ private slots:
     }
 
     void testClientLifecycleAndGracefulShutdown() {
-        // Test that WhisperSttClient starts worker thread and tears down gracefully
         for (int i = 0; i < 3; ++i) {
             auto client = std::make_unique<WhisperSttClient>();
-            client->loadModel(QStringLiteral("/tmp/nonexistent_test_model.bin"));
+            client->loadModel(u"/tmp/nonexistent_test_model.bin"_s);
             client->cancel();
-            // Client destructor runs here and must join worker thread cleanly without terminate()
         }
     }
 };

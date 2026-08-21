@@ -135,7 +135,7 @@ void AudioRecorder::startRecording() {
     setRecording(true);
     setAudioLevel(0.0);
     setStatusMessage(u"Recording…"_s);
-    m_maxDurationTimer->start(kMaxRecordingDurationMs);
+    m_maxDurationTimer->start(kMaxRecordingDuration);
     qCDebug(lcAudio) << "Recording started successfully (5m safety ceiling active)";
 }
 
@@ -229,7 +229,7 @@ void AudioRecorder::onReadyRead() {
                 sumSquares += val * val;
             }
         }
-    } else { // Default Int16
+    } else {
         sampleCount = chunk.size() / sizeof(qint16);
         if (sampleCount > 0) {
             const auto* samples = reinterpret_cast<const qint16*>(chunk.constData());

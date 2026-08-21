@@ -16,6 +16,7 @@
 #include <QTimer>
 
 using namespace Qt::StringLiterals;
+using namespace std::chrono_literals;
 
 QDBusArgument& operator<<(QDBusArgument& argument, const PortalShortcut& shortcut) {
     argument.beginStructure();
@@ -43,7 +44,7 @@ GlobalShortcutManager::GlobalShortcutManager(QObject* parent)
     qCDebug(lcShortcut) << "GlobalShortcutManager initialized -> Token:" << m_handleToken
                         << "SessionToken:" << m_sessionHandleToken;
 
-    QTimer::singleShot(50, this, &GlobalShortcutManager::initializePortal);
+    QTimer::singleShot(50ms, this, &GlobalShortcutManager::initializePortal);
 }
 
 bool GlobalShortcutManager::isAvailable() const {

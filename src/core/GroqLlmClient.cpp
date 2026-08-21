@@ -12,14 +12,15 @@
 #include <algorithm>
 
 using namespace Qt::StringLiterals;
+using namespace std::chrono_literals;
 
 GroqLlmClient::GroqLlmClient(QObject* parent)
     : QObject(parent) {
     QSettings settings;
     m_enabled = settings.value(u"Groq/LlmEnabled"_s, false).toBool();
-    m_selectedModel = settings.value(u"Groq/LlmModel"_s, QString::fromLatin1(kDefaultModel)).toString();
+    m_selectedModel = settings.value(u"Groq/LlmModel"_s, kDefaultModel.toString()).toString();
     if (m_selectedModel.isEmpty() || m_selectedModel == u"llama-3.1-8b-instant"_s) {
-        m_selectedModel = QString::fromLatin1(kDefaultModel);
+        m_selectedModel = kDefaultModel.toString();
     }
     m_activePreset = settings.value(u"Groq/LlmPreset"_s, u"grammar"_s).toString();
     if (m_activePreset.isEmpty()) {
@@ -77,7 +78,7 @@ QString GroqLlmClient::selectedModel() const {
 void GroqLlmClient::setSelectedModel(const QString& model) {
     QString trimmed = model.trimmed();
     if (trimmed.isEmpty()) {
-        trimmed = QString::fromLatin1(kDefaultModel);
+        trimmed = kDefaultModel.toString();
     }
     if (m_selectedModel != trimmed) {
         m_selectedModel = trimmed;
@@ -200,8 +201,7 @@ void GroqLlmClient::sendProcessRequest() {
     setBusy(true);
     setLastError({});
 
-    QString modelToUse =
-        m_selectedModel.trimmed().isEmpty() ? QString::fromLatin1(kDefaultModel) : m_selectedModel.trimmed();
+    QString modelToUse = m_selectedModel.trimmed().isEmpty() ? kDefaultModel.toString() : m_selectedModel.trimmed();
     QString systemPrompt = currentSystemPrompt();
 
     qCDebug(lcLLM) << "Dispatching Groq LLM completion request -> Model:" << modelToUse << "Preset:" << m_activePreset
@@ -252,7 +252,7 @@ void GroqLlmClient::handleProcessResponse(const GroqApiResponse& res) {
             qCDebug(lcLLM) << "GroqLlmClient: Transient error encountered (Status:" << res.httpStatus
                            << "Error:" << res.networkError << "). Scheduling retry in" << delayMs << "ms (Attempt"
                            << m_requestRunner.retryCount() << "/" << m_requestRunner.policy().maxRetries << ")";
-            QTimer::singleShot(delayMs, this, [this]() {
+            QTimer::singleShot(std::chrono::milliseconds(delayMs), this, [this]() {
                 if (!m_requestRunner.isCancelled() && !m_pendingRawText.isEmpty()) {
                     sendProcessRequest();
                 }

@@ -47,8 +47,8 @@ public:
 
     static QString userAgent();
 
-    static constexpr std::chrono::seconds kDefaultTransferTimeout {15};
-    static constexpr const char* kApiBaseUrl = "https://api.groq.com/openai/v1";
+    static constexpr auto kDefaultTransferTimeout = std::chrono::seconds(15);
+    inline static constexpr QStringView kApiBaseUrl = u"https://api.groq.com/openai/v1";
 
 signals:
     void apiKeyChanged();
@@ -66,6 +66,6 @@ private:
     QNetworkRequestFactory m_requestFactory;
     QString m_apiKey;
 
-    static constexpr const char* kKeychainService = "QTranscribe";
-    static constexpr const char* kKeychainKey = "groq_api_key";
+    inline static constexpr QStringView kKeychainService = u"QTranscribe";
+    inline static constexpr QStringView kKeychainKey = u"groq_api_key";
 };

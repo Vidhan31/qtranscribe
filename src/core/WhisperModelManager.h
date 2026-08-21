@@ -6,8 +6,9 @@
 #include <QNetworkAccessManager>
 #include <QPointer>
 #include <QQmlEngine>
-#include <QScopedPointer>
 #include <QString>
+
+#include <memory>
 
 class QFile;
 class QNetworkReply;
@@ -24,7 +25,6 @@ struct WhisperModelItem {
     qint64 installedSizeBytes = 0;
     QString installedSizeFormatted;
 
-    // Live download state
     bool isDownloading = false;
     qreal progress = 0.0;
     qint64 bytesReceived = 0;
@@ -85,7 +85,6 @@ public:
     explicit WhisperModelManager(QObject* parent = nullptr);
     ~WhisperModelManager() override;
 
-    // QAbstractListModel interface
     int rowCount(const QModelIndex& parent = QModelIndex()) const override;
     QVariant data(const QModelIndex& index, int role = Qt::DisplayRole) const override;
     QHash<int, QByteArray> roleNames() const override;
@@ -141,10 +140,9 @@ private:
     QString m_lastError;
     qint64 m_availableDiskSpace = 0;
 
-    // Download state
     QNetworkAccessManager m_nam;
     QPointer<QNetworkReply> m_currentReply;
-    QScopedPointer<QFile> m_partFile;
+    std::unique_ptr<QFile> m_partFile;
     QString m_downloadingModelId;
     QString m_downloadAbortReason;
     qreal m_currentProgress = 0.0;

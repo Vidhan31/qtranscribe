@@ -9,20 +9,21 @@
 #include <QTimer>
 
 using namespace Qt::StringLiterals;
+using namespace std::chrono_literals;
 
 GroqSttClient::GroqSttClient(QObject* parent)
     : AbstractSttClient(parent)
     , m_retryCountdownTimer(new QTimer(this)) {
     QSettings settings;
-    m_selectedModel = settings.value(u"Groq/Model"_s, QString::fromLatin1(kDefaultModel)).toString();
+    m_selectedModel = settings.value(u"Groq/Model"_s, kDefaultModel.toString()).toString();
     if (m_selectedModel.isEmpty() ||
         (m_selectedModel != u"whisper-large-v3-turbo"_s && m_selectedModel != u"whisper-large-v3"_s)) {
-        m_selectedModel = QString::fromLatin1(kDefaultModel);
+        m_selectedModel = kDefaultModel.toString();
     }
     m_language = settings.value(u"Groq/Language"_s, QString()).toString();
     m_customPrompt = settings.value(u"Groq/CustomPrompt"_s, QString()).toString();
 
-    m_retryCountdownTimer->setInterval(1000);
+    m_retryCountdownTimer->setInterval(1s);
     connect(m_retryCountdownTimer, &QTimer::timeout, this, [this]() {
         if (m_retrySecondsRemaining > 0) {
             setRetrySecondsRemaining(m_retrySecondsRemaining - 1);
@@ -169,7 +170,7 @@ QString GroqSttClient::selectedModel() const {
 void GroqSttClient::setSelectedModel(const QString& model) {
     QString trimmed = model.trimmed();
     if (trimmed.isEmpty()) {
-        trimmed = QString::fromLatin1(kDefaultModel);
+        trimmed = kDefaultModel.toString();
     }
     if (m_selectedModel != trimmed) {
         m_selectedModel = trimmed;
@@ -226,7 +227,7 @@ void GroqSttClient::retryLast() {
 }
 
 void GroqSttClient::transcribe(const QByteArray& wavData) {
-    transcribe(wavData, QStringLiteral("audio.wav"));
+    transcribe(wavData, u"audio.wav"_s);
 }
 
 void GroqSttClient::transcribe(const QByteArray& wavData, const QString& filename) {
@@ -266,8 +267,7 @@ void GroqSttClient::sendTranscribeRequest() {
     setBusy(true);
     setLastError({});
 
-    QString modelToUse =
-        m_selectedModel.trimmed().isEmpty() ? QString::fromLatin1(kDefaultModel) : m_selectedModel.trimmed();
+    QString modelToUse = m_selectedModel.trimmed().isEmpty() ? kDefaultModel.toString() : m_selectedModel.trimmed();
     QString langToUse = m_language.trimmed();
     QString promptToUse = m_customPrompt.trimmed();
     QString filenameToUse = m_lastFilename.isEmpty() ? u"audio.wav"_s : m_lastFilename;
@@ -358,7 +358,7 @@ void GroqSttClient::handleTranscribeResponse(const GroqApiResponse& res) {
             qCDebug(lcNetwork) << "GroqSttClient: Transient error encountered (Status:" << res.httpStatus
                                << "Error:" << res.networkError << "). Scheduling retry in" << delayMs << "ms (Attempt"
                                << m_requestRunner.retryCount() << "/" << m_requestRunner.policy().maxRetries << ")";
-            QTimer::singleShot(delayMs, this, [this]() {
+            QTimer::singleShot(std::chrono::milliseconds(delayMs), this, [this]() {
                 if (!m_requestRunner.isCancelled() && !m_lastWavData.isEmpty()) {
                     sendTranscribeRequest();
                 }

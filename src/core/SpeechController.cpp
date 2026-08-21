@@ -287,11 +287,11 @@ bool SpeechController::hasActiveNotice() const {
 
 void SpeechController::triggerNoticeAction(const QString& actionId) {
     qCDebug(lcSpeech) << "SpeechController: triggerNoticeAction:" << actionId;
-    if (actionId == QLatin1String("restartInjector")) {
+    if (actionId == u"restartInjector"_s) {
         if (m_injector) {
             m_injector->restartService();
         }
-    } else if (actionId == QLatin1String("openSystemSettings")) {
+    } else if (actionId == u"openSystemSettings"_s) {
         emit openSettingsRequested(4);
     } else if (m_pipeline) {
         m_pipeline->triggerNoticeAction(actionId);
@@ -482,7 +482,7 @@ void SpeechController::playStopSound() {
 }
 
 void SpeechController::onShortcutActivated(const QString& shortcutId) {
-    if (shortcutId == QLatin1String("toggle-recording")) {
+    if (shortcutId == u"toggle-recording"_s) {
         qCDebug(lcSpeech) << "SpeechController: Global shortcut triggered toggleRecording";
         toggleRecording();
     }

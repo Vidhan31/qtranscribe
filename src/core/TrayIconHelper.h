@@ -4,6 +4,8 @@
 #include <QQmlEngine>
 #include <QString>
 
+using namespace Qt::StringLiterals;
+
 class TrayIconHelper : public QObject {
     Q_OBJECT
     QML_ELEMENT
@@ -26,17 +28,13 @@ public:
         return isDark ? trayIconRecordingDarkPath() : trayIconRecordingLightPath();
     }
 
-    QString trayIconDarkPath() const { return QStringLiteral("qrc:/qt/qml/QTranscribe/assets/mute-dark.svg"); }
-    QString trayIconLightPath() const { return QStringLiteral("qrc:/qt/qml/QTranscribe/assets/mute.svg"); }
-    QString trayIconRecordingDarkPath() const {
-        return QStringLiteral("qrc:/qt/qml/QTranscribe/assets/microphone-dark.svg");
-    }
-    QString trayIconRecordingLightPath() const {
-        return QStringLiteral("qrc:/qt/qml/QTranscribe/assets/microphone.svg");
-    }
+    QString trayIconDarkPath() const { return u"qrc:/qt/qml/QTranscribe/assets/mute-dark.svg"_s; }
+    QString trayIconLightPath() const { return u"qrc:/qt/qml/QTranscribe/assets/mute.svg"_s; }
+    QString trayIconRecordingDarkPath() const { return u"qrc:/qt/qml/QTranscribe/assets/microphone-dark.svg"_s; }
+    QString trayIconRecordingLightPath() const { return u"qrc:/qt/qml/QTranscribe/assets/microphone.svg"_s; }
 
-    QString trayIconName() const { return QStringLiteral("qtranscribe-tray"); }
-    QString trayIconRecordingName() const { return QStringLiteral("qtranscribe-tray-recording"); }
+    QString trayIconName() const { return u"qtranscribe-tray"_s; }
+    QString trayIconRecordingName() const { return u"qtranscribe-tray-recording"_s; }
 
 signals:
     void iconsReady();

@@ -9,11 +9,12 @@
 #include <QTimer>
 
 using namespace Qt::StringLiterals;
+using namespace std::chrono_literals;
 
 TranscriptionPipeline::TranscriptionPipeline(QObject* parent)
     : QObject(parent)
     , m_maxDurationNoticeTimer(new QTimer(this)) {
-    m_maxDurationNoticeTimer->setInterval(6000);
+    m_maxDurationNoticeTimer->setInterval(6s);
     m_maxDurationNoticeTimer->setSingleShot(true);
     connect(m_maxDurationNoticeTimer, &QTimer::timeout, this, [this]() {
         m_showMaxDurationNotice = false;
@@ -446,17 +447,17 @@ bool TranscriptionPipeline::hasActiveNotice() const {
 
 void TranscriptionPipeline::triggerNoticeAction(const QString& actionId) {
     qCDebug(lcSpeech) << "TranscriptionPipeline: triggerNoticeAction:" << actionId;
-    if (actionId == QLatin1String("openApiKeySettings")) {
+    if (actionId == u"openApiKeySettings"_s) {
         emit openSettingsRequested(0);
-    } else if (actionId == QLatin1String("openSpeechSettings")) {
+    } else if (actionId == u"openSpeechSettings"_s) {
         emit openSettingsRequested(1);
-    } else if (actionId == QLatin1String("openOfflineSettings")) {
+    } else if (actionId == u"openOfflineSettings"_s) {
         emit openSettingsRequested(2);
-    } else if (actionId == QLatin1String("openLlmSettings")) {
+    } else if (actionId == u"openLlmSettings"_s) {
         emit openSettingsRequested(3);
-    } else if (actionId == QLatin1String("retryStt")) {
+    } else if (actionId == u"retryStt"_s) {
         retry();
-    } else if (actionId == QLatin1String("dismissError")) {
+    } else if (actionId == u"dismissError"_s) {
         clearError();
     }
 }

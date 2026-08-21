@@ -91,5 +91,5 @@ private:
     QString m_language;
     QString m_customPrompt;
 
-    static constexpr const char* kDefaultModel = "whisper-large-v3-turbo";
+    inline static constexpr QStringView kDefaultModel = u"whisper-large-v3-turbo";
 };

@@ -81,5 +81,5 @@ private:
     double m_temperature = 0.1;
     bool m_enabled = false;
 
-    static constexpr const char* kDefaultModel = "openai/gpt-oss-20b";
+    inline static constexpr QStringView kDefaultModel = u"openai/gpt-oss-20b";
 };

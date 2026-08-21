@@ -5,6 +5,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QHttpHeaders>
 #include <QNetworkReply>
 #include <QNetworkRequest>
 #include <QSettings>
@@ -15,27 +16,20 @@
 using namespace Qt::StringLiterals;
 
 namespace {
-constexpr const char* kHfBaseUrl = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/";
-constexpr const char* kDefaultSelectedModel = "tiny.en";
+const auto kHfBaseUrl = u"https://huggingface.co/ggerganov/whisper.cpp/resolve/main/"_s;
+const auto kDefaultSelectedModel = u"tiny.en"_s;
 } // namespace
 
 WhisperModelManager::WhisperModelManager(QObject* parent)
     : QAbstractListModel(parent) {
-    // Ensure models directory exists
     QDir().mkpath(modelsDirectory());
-
-    // Clean up any stale partial downloads left over from previous runs
     cleanupOrphanedPartFiles();
-
-    // Initialize presets
     initPresets();
     scanInstalledModels();
     checkDiskSpace();
 
-    // Restore selected model from settings
     QSettings settings;
-    m_selectedModelId =
-        settings.value(u"Whisper/SelectedModel"_s, QString::fromLatin1(kDefaultSelectedModel)).toString();
+    m_selectedModelId = settings.value(u"Whisper/SelectedModel"_s, kDefaultSelectedModel).toString();
     if (findModelIndex(m_selectedModelId) < 0 && !m_models.isEmpty()) {
         m_selectedModelId = m_models.first().id;
     }
@@ -272,9 +266,8 @@ void WhisperModelManager::startDownload(const QString& modelId) {
     m_lastSpeedTimeMs = 0;
     m_downloadTimer.restart();
 
-    // Prepare .part file
     const QString partFilePath = modelsDirectory() + u"/"_s + model.fileName + u".part"_s;
-    m_partFile.reset(new QFile(partFilePath));
+    m_partFile = std::make_unique<QFile>(partFilePath);
     if (!m_partFile->open(QIODevice::WriteOnly | QIODevice::Truncate)) {
         setLastError(tr("Failed to create temporary file for download: %1").arg(m_partFile->errorString()));
         m_partFile.reset();
@@ -295,10 +288,11 @@ void WhisperModelManager::startDownload(const QString& modelId) {
     emit isDownloadingAnyChanged();
     emit downloadProgressChanged();
 
-    // Build HTTP request
     QNetworkRequest request(QUrl(model.downloadUrl));
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
-    request.setHeader(QNetworkRequest::UserAgentHeader, u"QTranscribe/1.0 (Linux; Wayland)"_s);
+    QHttpHeaders headers;
+    headers.append(QHttpHeaders::WellKnownHeader::UserAgent, u"QTranscribe/1.0 (Linux; Wayland)"_s);
+    request.setHeaders(headers);
 
     qCDebug(lcSpeech) << "WhisperModelManager: Starting download for" << model.id << "from" << model.downloadUrl;
 
@@ -431,7 +425,6 @@ void WhisperModelManager::onDownloadReadyRead() {
         return;
     }
 
-    // 1. Enforce preflight storage bound / catalogued size cap on incoming stream
     const qint64 currentSize = m_partFile->size();
     if (model.sizeBytes > 0 && (currentSize + chunk.size() > model.sizeBytes)) {
         m_downloadAbortReason =
@@ -443,7 +436,6 @@ void WhisperModelManager::onDownloadReadyRead() {
         return;
     }
 
-    // 2. Write chunk and verify write result (prevent silent short writes / disk full)
     const qint64 bytesWritten = m_partFile->write(chunk);
     if (bytesWritten != chunk.size() || m_partFile->error() != QFile::NoError) {
         const QString errStr = m_partFile->errorString();
@@ -584,7 +576,6 @@ void WhisperModelManager::onDownloadFinished() {
                         failureMessage =
                             tr("Download integrity check failed for %1: invalid GGML model format.").arg(model.name);
                     } else {
-                        // All validations passed. Atomically replace final file.
                         QFile::remove(finalPath);
                         if (QFile::rename(partPath, finalPath)) {
                             success = true;
@@ -621,7 +612,6 @@ void WhisperModelManager::onDownloadFinished() {
         return;
     }
 
-    // Failure cleanup
     qCWarning(lcSpeech) << "WhisperModelManager: Download failed for" << model.id << ":" << failureMessage;
     setLastError(failureMessage);
     QFile::remove(partPath);
@@ -642,32 +632,25 @@ void WhisperModelManager::onDownloadFinished() {
 }
 
 void WhisperModelManager::initPresets() {
-    m_models = {
-        {u"tiny.en"_s, tr("Tiny (English)"), u"ggml-tiny.en.bin"_s,
-         QString::fromLatin1(kHfBaseUrl) + u"ggml-tiny.en.bin"_s, 77704715, u"~74 MiB"_s,
-         tr("Fastest English dictation with minimal memory (~390 MB RAM)")},
-        {u"tiny"_s, tr("Tiny (Multilingual)"), u"ggml-tiny.bin"_s, QString::fromLatin1(kHfBaseUrl) + u"ggml-tiny.bin"_s,
-         77691713, u"~74 MiB"_s, tr("Fast multilingual dictation with minimal memory (~390 MB RAM)")},
-        {u"base.en"_s, tr("Base (English)"), u"ggml-base.en.bin"_s,
-         QString::fromLatin1(kHfBaseUrl) + u"ggml-base.en.bin"_s, 147964211, u"~141 MiB"_s,
-         tr("Fast English transcription with improved accuracy (~500 MB RAM)")},
-        {u"base"_s, tr("Base (Multilingual)"), u"ggml-base.bin"_s, QString::fromLatin1(kHfBaseUrl) + u"ggml-base.bin"_s,
-         147951465, u"~141 MiB"_s, tr("Fast multilingual transcription with improved accuracy (~500 MB RAM)")},
-        {u"small.en"_s, tr("Small (English)"), u"ggml-small.en.bin"_s,
-         QString::fromLatin1(kHfBaseUrl) + u"ggml-small.en.bin"_s, 487614201, u"~465 MiB"_s,
-         tr("High accuracy English transcription, great balance (~1.0 GB RAM)")},
-        {u"small"_s, tr("Small (Multilingual)"), u"ggml-small.bin"_s,
-         QString::fromLatin1(kHfBaseUrl) + u"ggml-small.bin"_s, 487601967, u"~465 MiB"_s,
-         tr("High accuracy multilingual transcription (~1.0 GB RAM)")},
-        {u"medium.en"_s, tr("Medium (English)"), u"ggml-medium.en.bin"_s,
-         QString::fromLatin1(kHfBaseUrl) + u"ggml-medium.en.bin"_s, 1533774781, u"~1.4 GiB"_s,
-         tr("Very high accuracy English transcription (~2.6 GB RAM)")},
-        {u"medium"_s, tr("Medium (Multilingual)"), u"ggml-medium.bin"_s,
-         QString::fromLatin1(kHfBaseUrl) + u"ggml-medium.bin"_s, 1533763059, u"~1.4 GiB"_s,
-         tr("Very high accuracy multilingual transcription (~2.6 GB RAM)")},
-        {u"large-v3-turbo"_s, tr("Large v3 Turbo (Multilingual)"), u"ggml-large-v3-turbo.bin"_s,
-         QString::fromLatin1(kHfBaseUrl) + u"ggml-large-v3-turbo.bin"_s, 1624555275, u"~1.5 GiB"_s,
-         tr("State-of-the-art accuracy with fast 4-layer decoder (~3.1 GB RAM)")}};
+    m_models = {{u"tiny.en"_s, tr("Tiny (English)"), u"ggml-tiny.en.bin"_s, kHfBaseUrl + u"ggml-tiny.en.bin"_s,
+                 77704715, u"~74 MiB"_s, tr("Fastest English dictation with minimal memory (~390 MB RAM)")},
+                {u"tiny"_s, tr("Tiny (Multilingual)"), u"ggml-tiny.bin"_s, kHfBaseUrl + u"ggml-tiny.bin"_s, 77691713,
+                 u"~74 MiB"_s, tr("Fast multilingual dictation with minimal memory (~390 MB RAM)")},
+                {u"base.en"_s, tr("Base (English)"), u"ggml-base.en.bin"_s, kHfBaseUrl + u"ggml-base.en.bin"_s,
+                 147964211, u"~141 MiB"_s, tr("Fast English transcription with improved accuracy (~500 MB RAM)")},
+                {u"base"_s, tr("Base (Multilingual)"), u"ggml-base.bin"_s, kHfBaseUrl + u"ggml-base.bin"_s, 147951465,
+                 u"~141 MiB"_s, tr("Fast multilingual transcription with improved accuracy (~500 MB RAM)")},
+                {u"small.en"_s, tr("Small (English)"), u"ggml-small.en.bin"_s, kHfBaseUrl + u"ggml-small.en.bin"_s,
+                 487614201, u"~465 MiB"_s, tr("High accuracy English transcription, great balance (~1.0 GB RAM)")},
+                {u"small"_s, tr("Small (Multilingual)"), u"ggml-small.bin"_s, kHfBaseUrl + u"ggml-small.bin"_s,
+                 487601967, u"~465 MiB"_s, tr("High accuracy multilingual transcription (~1.0 GB RAM)")},
+                {u"medium.en"_s, tr("Medium (English)"), u"ggml-medium.en.bin"_s, kHfBaseUrl + u"ggml-medium.en.bin"_s,
+                 1533774781, u"~1.4 GiB"_s, tr("Very high accuracy English transcription (~2.6 GB RAM)")},
+                {u"medium"_s, tr("Medium (Multilingual)"), u"ggml-medium.bin"_s, kHfBaseUrl + u"ggml-medium.bin"_s,
+                 1533763059, u"~1.4 GiB"_s, tr("Very high accuracy multilingual transcription (~2.6 GB RAM)")},
+                {u"large-v3-turbo"_s, tr("Large v3 Turbo (Multilingual)"), u"ggml-large-v3-turbo.bin"_s,
+                 kHfBaseUrl + u"ggml-large-v3-turbo.bin"_s, 1624555275, u"~1.5 GiB"_s,
+                 tr("State-of-the-art accuracy with fast 4-layer decoder (~3.1 GB RAM)")}};
 }
 
 void WhisperModelManager::scanInstalledModels() {

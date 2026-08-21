@@ -36,7 +36,7 @@ GroqApiClient::GroqApiClient(QObject* parent)
 
     m_nam->setTransferTimeout(kDefaultTransferTimeout);
 
-    m_requestFactory.setBaseUrl(QUrl(QString::fromLatin1(kApiBaseUrl)));
+    m_requestFactory.setBaseUrl(QUrl(kApiBaseUrl.toString()));
     QHttpHeaders headers;
     headers.append(QHttpHeaders::WellKnownHeader::UserAgent, userAgent());
     m_requestFactory.setCommonHeaders(headers);
@@ -49,9 +49,9 @@ GroqApiClient::GroqApiClient(QObject* parent)
 #endif
 
 QString GroqApiClient::userAgent() {
-    const QString appVer = QCoreApplication::applicationVersion().isEmpty() ? QStringLiteral(QTRANSCRIBE_VERSION)
+    const QString appVer = QCoreApplication::applicationVersion().isEmpty() ? u"" QTRANSCRIBE_VERSION ""_s
                                                                             : QCoreApplication::applicationVersion();
-    return u"QTranscribe/%1 (Linux; Qt %2)"_s.arg(appVer, QString::fromLatin1(QT_VERSION_STR));
+    return u"QTranscribe/%1 (Linux; Qt %2)"_s.arg(appVer, QString::fromUtf8(QT_VERSION_STR));
 }
 
 QString GroqApiClient::apiKey() const {
@@ -104,7 +104,9 @@ QNetworkRequest GroqApiClient::createApiRequest(const QString& relativePath, con
     request.setAttribute(QNetworkRequest::Http2AllowedAttribute, true);
     request.setTransferTimeout(kDefaultTransferTimeout);
     if (!contentType.isEmpty()) {
-        request.setHeader(QNetworkRequest::KnownHeaders::ContentTypeHeader, contentType);
+        QHttpHeaders headers = request.headers();
+        headers.append(QHttpHeaders::WellKnownHeader::ContentType, contentType);
+        request.setHeaders(headers);
     }
     return request;
 }
@@ -162,8 +164,8 @@ QNetworkReply* GroqApiClient::postMultipart(const QString& relativePath, QHttpMu
 }
 
 void GroqApiClient::loadApiKeyFromKeychain() {
-    auto* readJob = new QKeychain::ReadPasswordJob(QString::fromLatin1(kKeychainService), this);
-    readJob->setKey(QString::fromLatin1(kKeychainKey));
+    auto* readJob = new QKeychain::ReadPasswordJob(kKeychainService.toString(), this);
+    readJob->setKey(kKeychainKey.toString());
     readJob->setAutoDelete(true);
 
     connect(readJob, &QKeychain::ReadPasswordJob::finished, this, [this](QKeychain::Job* job) {
@@ -189,8 +191,8 @@ void GroqApiClient::loadApiKeyFromKeychain() {
 }
 
 void GroqApiClient::saveApiKeyToKeychain(const QString& key) {
-    auto* writeJob = new QKeychain::WritePasswordJob(QString::fromLatin1(kKeychainService), this);
-    writeJob->setKey(QString::fromLatin1(kKeychainKey));
+    auto* writeJob = new QKeychain::WritePasswordJob(kKeychainService.toString(), this);
+    writeJob->setKey(kKeychainKey.toString());
     writeJob->setTextData(key);
     writeJob->setAutoDelete(true);
 
@@ -206,8 +208,8 @@ void GroqApiClient::saveApiKeyToKeychain(const QString& key) {
 }
 
 void GroqApiClient::deleteApiKeyFromKeychain() {
-    auto* deleteJob = new QKeychain::DeletePasswordJob(QString::fromLatin1(kKeychainService), this);
-    deleteJob->setKey(QString::fromLatin1(kKeychainKey));
+    auto* deleteJob = new QKeychain::DeletePasswordJob(kKeychainService.toString(), this);
+    deleteJob->setKey(kKeychainKey.toString());
     deleteJob->setAutoDelete(true);
 
     connect(deleteJob, &QKeychain::DeletePasswordJob::finished, this, [](QKeychain::Job* job) {

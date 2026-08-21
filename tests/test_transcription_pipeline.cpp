@@ -8,6 +8,8 @@
 #include "GroqLlmClient.h"
 #include "TranscriptionPipeline.h"
 
+using namespace Qt::StringLiterals;
+
 class FakeSttClient : public AbstractSttClient {
     Q_OBJECT
 
@@ -98,7 +100,7 @@ private slots:
         TranscriptionPipeline pipeline;
         QCOMPARE(pipeline.state(), TranscriptionPipeline::State::Idle);
         QCOMPARE(pipeline.isBusy(), false);
-        QCOMPARE(pipeline.statusMessage(), QStringLiteral("Ready"));
+        QCOMPARE(pipeline.statusMessage(), u"Ready"_s);
         QVERIFY(pipeline.lastError().isEmpty());
         QVERIFY(pipeline.lastTranscription().isEmpty());
     }
@@ -130,7 +132,6 @@ private slots:
         QSignalSpy finishedSpy(&pipeline, &TranscriptionPipeline::transcriptionFinished);
         QSignalSpy stateSpy(&pipeline, &TranscriptionPipeline::stateChanged);
 
-        // Simulate audio payload arriving from recorder
         const QByteArray dummyWav("RIFFdummyWAVdata");
         QMetaObject::invokeMethod(&pipeline, "onRecordingFinished", Q_ARG(QByteArray, dummyWav));
 
@@ -139,14 +140,13 @@ private slots:
         QCOMPARE(groqClient.m_transcribeCallCount, 1);
         QCOMPARE(groqClient.m_lastReceivedWav, dummyWav);
 
-        // Simulate STT client producing transcription
-        groqClient.simulateSuccess(QStringLiteral("Hello world dictation"));
+        groqClient.simulateSuccess(u"Hello world dictation"_s);
 
         QCOMPARE(pipeline.state(), TranscriptionPipeline::State::Idle);
         QCOMPARE(pipeline.isBusy(), false);
-        QCOMPARE(pipeline.lastTranscription(), QStringLiteral("Hello world dictation"));
+        QCOMPARE(pipeline.lastTranscription(), u"Hello world dictation"_s);
         QCOMPARE(finishedSpy.count(), 1);
-        QCOMPARE(finishedSpy.at(0).at(0).toString(), QStringLiteral("Hello world dictation"));
+        QCOMPARE(finishedSpy.at(0).at(0).toString(), u"Hello world dictation"_s);
     }
 
     void testErrorAndRetryFlow() {
@@ -162,25 +162,22 @@ private slots:
         QMetaObject::invokeMethod(&pipeline, "onRecordingFinished", Q_ARG(QByteArray, dummyWav));
         QCOMPARE(pipeline.state(), TranscriptionPipeline::State::Transcribing);
 
-        // Simulate STT transient failure
-        groqClient.simulateError(QStringLiteral("Rate Limit 429"));
+        groqClient.simulateError(u"Rate Limit 429"_s);
 
         QCOMPARE(pipeline.state(), TranscriptionPipeline::State::Error);
-        QCOMPARE(pipeline.lastError(), QStringLiteral("Rate Limit 429"));
+        QCOMPARE(pipeline.lastError(), u"Rate Limit 429"_s);
         QCOMPARE(errorSpy.count(), 1);
         QVERIFY(pipeline.hasActiveNotice());
 
-        // Invoke unified retry method
         pipeline.retry();
 
         QCOMPARE(pipeline.state(), TranscriptionPipeline::State::Transcribing);
         QCOMPARE(groqClient.m_transcribeCallCount, 2);
         QCOMPARE(groqClient.m_lastReceivedWav, dummyWav);
 
-        // Now simulate success on retry
-        groqClient.simulateSuccess(QStringLiteral("Retried text"));
+        groqClient.simulateSuccess(u"Retried text"_s);
         QCOMPARE(pipeline.state(), TranscriptionPipeline::State::Idle);
-        QCOMPARE(pipeline.lastTranscription(), QStringLiteral("Retried text"));
+        QCOMPARE(pipeline.lastTranscription(), u"Retried text"_s);
     }
 
     void testCancelFlow() {
@@ -206,13 +203,13 @@ private slots:
         pipeline.setActiveBackend(TranscriptionPipeline::Backend::Groq);
 
         QVariantMap mockNotice;
-        mockNotice[QStringLiteral("hasNotice")] = true;
-        mockNotice[QStringLiteral("type")] = QStringLiteral("warning");
-        mockNotice[QStringLiteral("title")] = QStringLiteral("API Key Missing");
+        mockNotice[u"hasNotice"_s] = true;
+        mockNotice[u"type"_s] = u"warning"_s;
+        mockNotice[u"title"_s] = u"API Key Missing"_s;
         groqClient.setNotice(mockNotice);
 
         QVERIFY(pipeline.hasActiveNotice());
-        QCOMPARE(pipeline.activeNotice().value(QStringLiteral("title")).toString(), QStringLiteral("API Key Missing"));
+        QCOMPARE(pipeline.activeNotice().value(u"title"_s).toString(), u"API Key Missing"_s);
     }
 };
 

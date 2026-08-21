@@ -144,7 +144,7 @@ bool TextInjectorClient::typeText(const QString& text) {
     }
 
     m_pendingText = text;
-    m_injectionTimer->start(m_injectionDelay);
+    m_injectionTimer->start(std::chrono::milliseconds(m_injectionDelay));
     m_statusMessage = u"Waiting %1 ms before injection…"_s.arg(m_injectionDelay);
     emit statusMessageChanged();
     return true;
