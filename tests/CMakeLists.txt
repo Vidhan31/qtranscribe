@@ -23,6 +23,29 @@ add_test(
     COMMAND test_whisper_pipeline
 )
 
+qt_add_executable(test_whisper_storage
+    test_whisper_storage.cpp
+)
+
+target_link_libraries(test_whisper_storage
+    PRIVATE
+        qtranscribe_core
+        Qt6::Core
+        Qt6::Test
+        Qt6::Network
+)
+
+target_include_directories(test_whisper_storage
+    PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/src/core
+)
+
+add_test(
+    NAME WhisperStorageTest
+    COMMAND test_whisper_storage
+)
+
 qt_add_executable(test_transcription_pipeline
     test_transcription_pipeline.cpp
 )
