@@ -177,8 +177,7 @@ bool TextInjectorClient::doInjectText(const QString& text) {
         return false;
     }
 
-    const QByteArray pasteCmd = "{\"cmd\": \"paste\"}\n";
-    if (!m_connector->sendCommand(pasteCmd)) {
+    if (!m_connector->sendCommand(keyinjectord::Opcode::Paste)) {
         m_clipboard->restore(savedText, hadContent);
         m_lastError = m_connector->lastError();
         emit lastErrorChanged();

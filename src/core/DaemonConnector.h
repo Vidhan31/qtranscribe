@@ -1,5 +1,7 @@
 #pragma once
 
+#include "keyinjectord/protocol.h"
+
 #include <QLocalSocket>
 #include <QObject>
 #include <QProcess>
@@ -23,7 +25,7 @@ public:
     void stopDaemon();
     void restartService();
 
-    bool sendCommand(const QByteArray& cmdJson);
+    bool sendCommand(keyinjectord::Opcode opcode, int timeoutMs = 2000);
     bool ensureDaemonRunning();
     QString socketPath() const;
 
@@ -38,7 +40,6 @@ private slots:
     void onConnected();
     void onDisconnected();
     void onErrorOccurred(QLocalSocket::LocalSocketError error);
-    void onReadyRead();
 
 private:
     void setLastError(const QString& error);

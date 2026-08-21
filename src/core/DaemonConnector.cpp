@@ -18,7 +18,6 @@ DaemonConnector::DaemonConnector(QObject* parent)
     connect(m_socket, &QLocalSocket::connected, this, &DaemonConnector::onConnected);
     connect(m_socket, &QLocalSocket::disconnected, this, &DaemonConnector::onDisconnected);
     connect(m_socket, &QLocalSocket::errorOccurred, this, &DaemonConnector::onErrorOccurred);
-    connect(m_socket, &QLocalSocket::readyRead, this, &DaemonConnector::onReadyRead);
 
     connect(qApp, &QCoreApplication::aboutToQuit, this, &DaemonConnector::stopDaemon);
 }
@@ -195,19 +194,49 @@ void DaemonConnector::restartService() {
     connectToServer();
 }
 
-bool DaemonConnector::sendCommand(const QByteArray& cmdJson) {
+bool DaemonConnector::sendCommand(keyinjectord::Opcode opcode, int timeoutMs) {
     if (!m_socket || m_socket->state() != QLocalSocket::ConnectedState) {
         setLastError(u"Socket not connected"_s);
         return false;
     }
 
-    qint64 written = m_socket->write(cmdJson);
-    if (written != cmdJson.size()) {
-        setLastError(u"Failed to write full command to socket"_s);
+    const char byte = static_cast<char>(opcode);
+    qint64 written = m_socket->write(&byte, 1);
+    if (written != 1) {
+        setLastError(u"Failed to write opcode to socket"_s);
         return false;
     }
     m_socket->flush();
-    return true;
+
+    if (m_socket->bytesAvailable() == 0) {
+        if (!m_socket->waitForReadyRead(timeoutMs)) {
+            setLastError(u"Timed out waiting for response from keyinjectord"_s);
+            return false;
+        }
+    }
+
+    char respByte = 0;
+    if (m_socket->read(&respByte, 1) != 1) {
+        setLastError(u"Failed to read response code from keyinjectord"_s);
+        return false;
+    }
+
+    auto status = static_cast<keyinjectord::ResponseStatus>(static_cast<uint8_t>(respByte));
+    switch (status) {
+        case keyinjectord::ResponseStatus::Ok:
+            setStatusMessage(u"Command succeeded"_s);
+            setLastError({});
+            return true;
+        case keyinjectord::ResponseStatus::UnknownCmd:
+            setLastError(u"Server rejected command: unknown opcode"_s);
+            return false;
+        case keyinjectord::ResponseStatus::DeviceError:
+            setLastError(u"Key injection failed on device"_s);
+            return false;
+    }
+
+    setLastError(u"Unknown response code from keyinjectord"_s);
+    return false;
 }
 
 void DaemonConnector::onConnected() {
@@ -230,15 +259,6 @@ void DaemonConnector::onErrorOccurred(QLocalSocket::LocalSocketError error) {
     }
     setLastError(msg);
     emit connectedChanged();
-}
-
-void DaemonConnector::onReadyRead() {
-    constexpr qint64 kMaxResponseReadSize = 1024;
-    QByteArray data = m_socket->read(kMaxResponseReadSize);
-    QString response = QString::fromUtf8(data).trimmed();
-    if (!response.isEmpty()) {
-        setStatusMessage(u"Response: %1"_s.arg(response));
-    }
 }
 
 void DaemonConnector::setFatalError(bool fatal, const QString& msg) {

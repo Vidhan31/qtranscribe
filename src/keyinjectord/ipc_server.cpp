@@ -2,8 +2,11 @@
 
 #include "logging.h"
 
+#include "protocol.h"
+
 #include <algorithm>
 #include <cerrno>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <stdexcept>
@@ -18,48 +21,6 @@
 #include <unistd.h>
 
 namespace keyinjectord {
-
-namespace {
-
-std::string extractJsonStringValue(const std::string& json, const std::string& key) {
-    std::string searchKey = "\"" + key + "\"";
-    auto keyPos = json.find(searchKey);
-    if (keyPos == std::string::npos)
-        return {};
-
-    auto colonPos = json.find(':', keyPos + searchKey.size());
-    if (colonPos == std::string::npos)
-        return {};
-
-    auto openQuote = json.find('"', colonPos + 1);
-    if (openQuote == std::string::npos)
-        return {};
-
-    std::string result;
-    for (size_t i = openQuote + 1; i < json.size(); ++i) {
-        if (json[i] == '\\' && i + 1 < json.size()) {
-            char next = json[i + 1];
-            if (next == '"' || next == '\\' || next == '/') {
-                result += next;
-            } else if (next == 'n') {
-                result += '\n';
-            } else if (next == 't') {
-                result += '\t';
-            } else {
-                result += next;
-            }
-            ++i;
-        } else if (json[i] == '"') {
-            break;
-        } else {
-            result += json[i];
-        }
-    }
-
-    return result;
-}
-
-} // anonymous namespace
 
 IpcServer::IpcServer(const std::string& socketPath, IDevice& device)
     : m_socketPath(socketPath)
@@ -145,7 +106,6 @@ void IpcServer::disconnectClient(size_t clientIdx) {
     KEYINJECTORD_LOG_DEBUG("Client disconnected (fd=%d)", fd);
     close(fd);
     m_clientFds.erase(m_clientFds.begin() + clientIdx);
-    m_clientBuffers.erase(m_clientBuffers.begin() + clientIdx);
 }
 
 void IpcServer::run() {
@@ -207,7 +167,6 @@ void IpcServer::run() {
                         } else {
                             KEYINJECTORD_LOG_DEBUG("Client connected (fd=%d, pid=%d)", clientFd, peerCreds.pid);
                             m_clientFds.push_back(clientFd);
-                            m_clientBuffers.emplace_back();
                         }
                     } else {
                         KEYINJECTORD_LOG_ERROR("getsockopt(SO_PEERCRED) failed: %s — rejecting connection",
@@ -231,7 +190,7 @@ void IpcServer::run() {
 
 void IpcServer::handleClient(int clientIdx) {
     int fd = m_clientFds[clientIdx];
-    char buf[kMaxBufferSize];
+    uint8_t buf[kMaxBufferSize];
 
     ssize_t n = read(fd, buf, sizeof(buf));
     if (n <= 0) {
@@ -239,38 +198,39 @@ void IpcServer::handleClient(int clientIdx) {
         return;
     }
 
-    std::string& buffer = m_clientBuffers[clientIdx];
-    if (buffer.size() + static_cast<size_t>(n) > kMaxBufferSize) {
-        KEYINJECTORD_LOG_ERROR("Client fd=%d exceeded maximum buffer size (%zu bytes), disconnecting", fd,
-                               kMaxBufferSize);
-        disconnectClient(clientIdx);
-        return;
-    }
+    for (ssize_t i = 0; i < n; ++i) {
+        uint8_t opcodeRaw = buf[i];
+        ResponseStatus status;
+        bool shouldDisconnect = false;
 
-    buffer.append(buf, static_cast<size_t>(n));
-
-    size_t pos;
-    while ((pos = buffer.find('\n')) != std::string::npos) {
-        std::string line = buffer.substr(0, pos);
-        buffer.erase(0, pos + 1);
-
-        if (!line.empty()) {
-            processMessage(line);
-
-            std::string response = "{\"status\": \"ok\"}\n";
-            [[maybe_unused]] auto w = write(fd, response.c_str(), response.size());
+        switch (static_cast<Opcode>(opcodeRaw)) {
+            case Opcode::Paste:
+                KEYINJECTORD_LOG_DEBUG("IPC Received command: Paste (0x%02X)", opcodeRaw);
+                if (m_device.sendCtrlV()) {
+                    status = ResponseStatus::Ok;
+                } else {
+                    KEYINJECTORD_LOG_ERROR("Device sendCtrlV() failed");
+                    status = ResponseStatus::DeviceError;
+                }
+                break;
+            case Opcode::Ping:
+                KEYINJECTORD_LOG_DEBUG("IPC Received command: Ping (0x%02X)", opcodeRaw);
+                status = ResponseStatus::Ok;
+                break;
+            default:
+                KEYINJECTORD_LOG_ERROR("Unknown IPC opcode: 0x%02X from fd=%d", opcodeRaw, fd);
+                status = ResponseStatus::UnknownCmd;
+                shouldDisconnect = true;
+                break;
         }
-    }
-}
 
-void IpcServer::processMessage(const std::string& message) {
-    KEYINJECTORD_LOG_DEBUG("IPC Received payload: %s", message.c_str());
+        uint8_t respByte = static_cast<uint8_t>(status);
+        [[maybe_unused]] auto w = write(fd, &respByte, sizeof(respByte));
 
-    std::string cmd = extractJsonStringValue(message, "cmd");
-    if (cmd == "paste") {
-        m_device.sendCtrlV();
-    } else {
-        KEYINJECTORD_LOG_ERROR("Unknown IPC command: '%s'", cmd.c_str());
+        if (shouldDisconnect) {
+            disconnectClient(clientIdx);
+            return;
+        }
     }
 }
 
