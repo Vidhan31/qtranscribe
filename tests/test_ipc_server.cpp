@@ -31,6 +31,22 @@ public:
     std::atomic<int> ctrlVCalledCount {0};
 };
 
+struct ServerRunner {
+    keyinjectord::IpcServer& server;
+    std::thread thread;
+
+    explicit ServerRunner(keyinjectord::IpcServer& s)
+        : server(s)
+        , thread([&s]() { s.run(); }) { }
+
+    ~ServerRunner() {
+        server.stop();
+        if (thread.joinable()) {
+            thread.join();
+        }
+    }
+};
+
 class TestIpcServer : public QObject {
     Q_OBJECT
 
@@ -42,8 +58,7 @@ private slots:
 
         MockDevice mockDevice;
         keyinjectord::IpcServer server(sockPath, mockDevice);
-
-        std::thread serverThread([&server]() { server.run(); });
+        ServerRunner runner(server);
 
         QLocalSocket client;
         client.connectToServer(QString::fromStdString(sockPath));
@@ -62,8 +77,6 @@ private slots:
         QCOMPARE(mockDevice.ctrlVCalledCount.load(), 1);
 
         client.disconnectFromServer();
-        server.stop();
-        serverThread.join();
     }
 
     void testPingCommand() {
@@ -73,8 +86,7 @@ private slots:
 
         MockDevice mockDevice;
         keyinjectord::IpcServer server(sockPath, mockDevice);
-
-        std::thread serverThread([&server]() { server.run(); });
+        ServerRunner runner(server);
 
         QLocalSocket client;
         client.connectToServer(QString::fromStdString(sockPath));
@@ -94,8 +106,6 @@ private slots:
         QCOMPARE(mockDevice.ctrlVCalledCount.load(), 0);
 
         client.disconnectFromServer();
-        server.stop();
-        serverThread.join();
     }
 
     void testUnknownOpcodeDisconnect() {
@@ -105,8 +115,7 @@ private slots:
 
         MockDevice mockDevice;
         keyinjectord::IpcServer server(sockPath, mockDevice);
-
-        std::thread serverThread([&server]() { server.run(); });
+        ServerRunner runner(server);
 
         QLocalSocket client;
         client.connectToServer(QString::fromStdString(sockPath));
@@ -125,9 +134,6 @@ private slots:
         // Server should immediately disconnect client on unknown opcode
         QVERIFY(client.waitForDisconnected(2000) || client.state() == QLocalSocket::UnconnectedState);
         QCOMPARE(mockDevice.ctrlVCalledCount.load(), 0);
-
-        server.stop();
-        serverThread.join();
     }
 
     void testMaxClientsLimit() {
@@ -137,15 +143,22 @@ private slots:
 
         MockDevice mockDevice;
         keyinjectord::IpcServer server(sockPath, mockDevice);
-
-        std::thread serverThread([&server]() { server.run(); });
+        ServerRunner runner(server);
 
         std::vector<std::unique_ptr<QLocalSocket>> clients;
-        // Connect up to kMaxClients (8 clients)
+        // Connect up to kMaxClients (8 clients) and perform a ping handshake to guarantee server acceptance
+        const char pingCmd = static_cast<char>(keyinjectord::Opcode::Ping);
         for (size_t i = 0; i < keyinjectord::kMaxClients; ++i) {
             auto client = std::make_unique<QLocalSocket>();
             client->connectToServer(QString::fromStdString(sockPath));
             QVERIFY(client->waitForConnected(2000));
+
+            // Handshake to ensure the server accepted and added the client to its active list
+            client->write(&pingCmd, 1);
+            client->flush();
+            QVERIFY(client->waitForReadyRead(2000));
+            QCOMPARE(client->readAll().size(), 1);
+
             clients.push_back(std::move(client));
         }
 
@@ -161,9 +174,6 @@ private slots:
         for (auto& client : clients) {
             client->disconnectFromServer();
         }
-
-        server.stop();
-        serverThread.join();
     }
 };
 
