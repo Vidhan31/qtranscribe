@@ -1,7 +1,8 @@
 #pragma once
 
-#include "uinput_device.h"
+#include "device_interface.h"
 
+#include <cstddef>
 #include <string>
 #include <vector>
 
@@ -9,24 +10,30 @@
 
 namespace keyinjectord {
 
+constexpr size_t kMaxBufferSize = 1024;
+constexpr size_t kMaxClients = 8;
+
 class IpcServer {
 public:
-    explicit IpcServer(const std::string& socketPath, UinputDevice& device);
+    explicit IpcServer(const std::string& socketPath, IDevice& device);
     ~IpcServer();
 
     IpcServer(const IpcServer&) = delete;
     IpcServer& operator=(const IpcServer&) = delete;
 
     void run();
+    void stop();
 
 private:
-    void handleClient(int clientFd);
+    void handleClient(int clientIdx);
     void processMessage(const std::string& message);
+    void disconnectClient(size_t clientIdx);
 
     std::string m_socketPath;
-    UinputDevice& m_device;
+    IDevice& m_device;
     int m_listenFd = -1;
     int m_signalFd = -1;
+    int m_stopEventFd = -1;
 
     std::vector<int> m_clientFds;
     std::vector<std::string> m_clientBuffers;

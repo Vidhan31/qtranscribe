@@ -1,4 +1,5 @@
 #pragma once
+#include "device_interface.h"
 
 #include <chrono>
 
@@ -7,15 +8,15 @@
 
 namespace keyinjectord {
 
-class UinputDevice {
+class UinputDevice : public IDevice {
 public:
     explicit UinputDevice(int uinputFd, int delayMs = 18);
-    ~UinputDevice();
+    ~UinputDevice() override;
 
     UinputDevice(const UinputDevice&) = delete;
     UinputDevice& operator=(const UinputDevice&) = delete;
 
-    bool sendCtrlV();
+    bool sendCtrlV() override;
 
     bool isValid() const { return m_uidev != nullptr; }
 

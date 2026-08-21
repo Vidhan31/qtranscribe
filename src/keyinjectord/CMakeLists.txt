@@ -23,6 +23,7 @@ add_executable(keyinjectord
     capability.cpp
     uinput_device.cpp
     ipc_server.cpp
+    device_interface.h
     logging.h
 )
 

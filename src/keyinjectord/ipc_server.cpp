@@ -8,6 +8,7 @@
 #include <cstring>
 #include <stdexcept>
 
+#include <sys/eventfd.h>
 #include <sys/signalfd.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
@@ -60,7 +61,7 @@ std::string extractJsonStringValue(const std::string& json, const std::string& k
 
 } // anonymous namespace
 
-IpcServer::IpcServer(const std::string& socketPath, UinputDevice& device)
+IpcServer::IpcServer(const std::string& socketPath, IDevice& device)
     : m_socketPath(socketPath)
     , m_device(device) {
     // Create signalfd for SIGINT/SIGTERM — replaces the self-pipe trick.
@@ -73,6 +74,11 @@ IpcServer::IpcServer(const std::string& socketPath, UinputDevice& device)
     m_signalFd = signalfd(-1, &mask, SFD_NONBLOCK | SFD_CLOEXEC);
     if (m_signalFd < 0) {
         throw std::runtime_error(std::string("signalfd() failed: ") + std::strerror(errno));
+    }
+
+    m_stopEventFd = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
+    if (m_stopEventFd < 0) {
+        throw std::runtime_error(std::string("eventfd() failed: ") + std::strerror(errno));
     }
 
     unlink(m_socketPath.c_str());
@@ -120,7 +126,26 @@ IpcServer::~IpcServer() {
         close(m_signalFd);
     }
 
+    if (m_stopEventFd >= 0) {
+        close(m_stopEventFd);
+    }
+
     KEYINJECTORD_LOG_INFO("IPC server shut down, socket removed");
+}
+
+void IpcServer::stop() {
+    if (m_stopEventFd >= 0) {
+        uint64_t val = 1;
+        [[maybe_unused]] auto w = write(m_stopEventFd, &val, sizeof(val));
+    }
+}
+
+void IpcServer::disconnectClient(size_t clientIdx) {
+    int fd = m_clientFds[clientIdx];
+    KEYINJECTORD_LOG_DEBUG("Client disconnected (fd=%d)", fd);
+    close(fd);
+    m_clientFds.erase(m_clientFds.begin() + clientIdx);
+    m_clientBuffers.erase(m_clientBuffers.begin() + clientIdx);
 }
 
 void IpcServer::run() {
@@ -128,9 +153,10 @@ void IpcServer::run() {
 
     while (true) {
         m_pollFds.clear();
-        m_pollFds.reserve(2 + m_clientFds.size());
+        m_pollFds.reserve(3 + m_clientFds.size());
 
         m_pollFds.push_back({m_signalFd, POLLIN, 0});
+        m_pollFds.push_back({m_stopEventFd, POLLIN, 0});
         m_pollFds.push_back({m_listenFd, POLLIN, 0});
         for (int cfd : m_clientFds) {
             m_pollFds.push_back({cfd, POLLIN, 0});
@@ -153,33 +179,47 @@ void IpcServer::run() {
             break;
         }
 
-        // Accept new client connections with peer credential verification
+        // Check stop eventfd
         if (m_pollFds[1].revents & POLLIN) {
+            uint64_t val = 0;
+            [[maybe_unused]] auto n = read(m_stopEventFd, &val, sizeof(val));
+            KEYINJECTORD_LOG_INFO("Stop requested, shutting down...");
+            break;
+        }
+
+        // Accept new client connections with peer credential verification
+        if (m_pollFds[2].revents & POLLIN) {
             int clientFd = accept4(m_listenFd, nullptr, nullptr, SOCK_CLOEXEC);
             if (clientFd >= 0) {
-                // Verify peer credentials — reject connections from other users
-                struct ucred peerCreds {};
-                socklen_t credLen = sizeof(peerCreds);
-                if (getsockopt(clientFd, SOL_SOCKET, SO_PEERCRED, &peerCreds, &credLen) == 0) {
-                    if (peerCreds.uid != getuid()) {
-                        KEYINJECTORD_LOG_ERROR("Rejected connection from UID %d (expected %d), PID %d", peerCreds.uid,
-                                               getuid(), peerCreds.pid);
-                        close(clientFd);
-                    } else {
-                        KEYINJECTORD_LOG_DEBUG("Client connected (fd=%d, pid=%d)", clientFd, peerCreds.pid);
-                        m_clientFds.push_back(clientFd);
-                        m_clientBuffers.emplace_back();
-                    }
-                } else {
-                    KEYINJECTORD_LOG_ERROR("getsockopt(SO_PEERCRED) failed: %s — rejecting connection",
-                                           std::strerror(errno));
+                if (m_clientFds.size() >= kMaxClients) {
+                    KEYINJECTORD_LOG_WARN("Max client connections reached (%zu/%zu), rejecting connection fd=%d",
+                                          m_clientFds.size(), kMaxClients, clientFd);
                     close(clientFd);
+                } else {
+                    // Verify peer credentials — reject connections from other users
+                    struct ucred peerCreds {};
+                    socklen_t credLen = sizeof(peerCreds);
+                    if (getsockopt(clientFd, SOL_SOCKET, SO_PEERCRED, &peerCreds, &credLen) == 0) {
+                        if (peerCreds.uid != getuid()) {
+                            KEYINJECTORD_LOG_ERROR("Rejected connection from UID %d (expected %d), PID %d",
+                                                   peerCreds.uid, getuid(), peerCreds.pid);
+                            close(clientFd);
+                        } else {
+                            KEYINJECTORD_LOG_DEBUG("Client connected (fd=%d, pid=%d)", clientFd, peerCreds.pid);
+                            m_clientFds.push_back(clientFd);
+                            m_clientBuffers.emplace_back();
+                        }
+                    } else {
+                        KEYINJECTORD_LOG_ERROR("getsockopt(SO_PEERCRED) failed: %s — rejecting connection",
+                                               std::strerror(errno));
+                        close(clientFd);
+                    }
                 }
             }
         }
 
-        for (size_t i = m_pollFds.size() - 1; i >= 2; --i) {
-            size_t clientIdx = i - 2;
+        for (size_t i = m_pollFds.size() - 1; i >= 3; --i) {
+            size_t clientIdx = i - 3;
             if (m_pollFds[i].revents & (POLLIN | POLLHUP | POLLERR)) {
                 handleClient(static_cast<int>(clientIdx));
             }
@@ -191,20 +231,24 @@ void IpcServer::run() {
 
 void IpcServer::handleClient(int clientIdx) {
     int fd = m_clientFds[clientIdx];
-    char buf[4096];
+    char buf[kMaxBufferSize];
 
     ssize_t n = read(fd, buf, sizeof(buf));
     if (n <= 0) {
-        KEYINJECTORD_LOG_DEBUG("Client disconnected (fd=%d)", fd);
-        close(fd);
-        m_clientFds.erase(m_clientFds.begin() + clientIdx);
-        m_clientBuffers.erase(m_clientBuffers.begin() + clientIdx);
+        disconnectClient(clientIdx);
         return;
     }
 
-    m_clientBuffers[clientIdx].append(buf, n);
-
     std::string& buffer = m_clientBuffers[clientIdx];
+    if (buffer.size() + static_cast<size_t>(n) > kMaxBufferSize) {
+        KEYINJECTORD_LOG_ERROR("Client fd=%d exceeded maximum buffer size (%zu bytes), disconnecting", fd,
+                               kMaxBufferSize);
+        disconnectClient(clientIdx);
+        return;
+    }
+
+    buffer.append(buf, static_cast<size_t>(n));
+
     size_t pos;
     while ((pos = buffer.find('\n')) != std::string::npos) {
         std::string line = buffer.substr(0, pos);

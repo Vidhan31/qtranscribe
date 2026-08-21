@@ -91,3 +91,27 @@ add_test(
     NAME HttpRequestRunnerTest
     COMMAND test_http_request_runner
 )
+
+qt_add_executable(test_ipc_server
+    test_ipc_server.cpp
+    ${CMAKE_SOURCE_DIR}/src/keyinjectord/ipc_server.cpp
+)
+
+target_link_libraries(test_ipc_server
+    PRIVATE
+        Qt6::Core
+        Qt6::Test
+        Qt6::Network
+)
+
+target_include_directories(test_ipc_server
+    PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/src/keyinjectord
+)
+
+add_test(
+    NAME IpcServerTest
+    COMMAND test_ipc_server
+)
+
