@@ -8,6 +8,8 @@ target_link_libraries(test_whisper_pipeline
     PRIVATE
         qtranscribe_core
         Qt6::Core
+        Qt6::Gui
+        Qt6::Multimedia
         Qt6::Test
         Qt6::Network
 )
@@ -54,6 +56,8 @@ target_link_libraries(test_transcription_pipeline
     PRIVATE
         qtranscribe_core
         Qt6::Core
+        Qt6::Gui
+        Qt6::Multimedia
         Qt6::Test
         Qt6::Network
 )
@@ -113,4 +117,16 @@ target_include_directories(test_ipc_server
 add_test(
     NAME IpcServerTest
     COMMAND test_ipc_server
+)
+
+file(REAL_PATH "${CMAKE_PREFIX_PATH}/lib" QT_TEST_LIB_DIR EXPAND_TILDE)
+
+set_tests_properties(
+    WhisperPipelineTest
+    WhisperStorageTest
+    TranscriptionPipelineTest
+    HttpRequestRunnerTest
+    IpcServerTest
+    PROPERTIES
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_MEDIA_BACKEND=null;LD_LIBRARY_PATH=${QT_TEST_LIB_DIR}:$ENV{LD_LIBRARY_PATH}"
 )

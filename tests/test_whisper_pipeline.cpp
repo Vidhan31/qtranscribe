@@ -243,5 +243,5 @@ private slots:
     }
 };
 
-QTEST_MAIN(TestWhisperPipeline)
+QTEST_GUILESS_MAIN(TestWhisperPipeline)
 #include "test_whisper_pipeline.moc"

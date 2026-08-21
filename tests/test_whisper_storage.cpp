@@ -127,5 +127,5 @@ private slots:
     }
 };
 
-QTEST_MAIN(WhisperStorageTest)
+QTEST_GUILESS_MAIN(WhisperStorageTest)
 #include "test_whisper_storage.moc"

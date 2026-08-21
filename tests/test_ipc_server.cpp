@@ -207,5 +207,5 @@ private slots:
     }
 };
 
-QTEST_MAIN(TestIpcServer)
+QTEST_GUILESS_MAIN(TestIpcServer)
 #include "test_ipc_server.moc"
