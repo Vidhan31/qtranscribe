@@ -105,4 +105,6 @@ private:
     QByteArray m_lastWavData;
 
     bool m_initialized = false;
+
+    friend class TestTranscriptionPipeline;
 };

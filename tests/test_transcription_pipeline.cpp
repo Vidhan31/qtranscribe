@@ -118,6 +118,8 @@ private slots:
         QSignalSpy finishedSpy(&pipeline, &TranscriptionPipeline::transcriptionFinished);
         QSignalSpy stateSpy(&pipeline, &TranscriptionPipeline::stateChanged);
 
+        pipeline.setState(TranscriptionPipeline::State::Recording);
+
         const QByteArray dummyWav("RIFFdummyWAVdata");
         QMetaObject::invokeMethod(&pipeline, "onRecordingFinished", Q_ARG(QByteArray, dummyWav));
 
@@ -143,6 +145,8 @@ private slots:
         pipeline.initialize();
 
         QSignalSpy errorSpy(&pipeline, &TranscriptionPipeline::errorOccurred);
+
+        pipeline.setState(TranscriptionPipeline::State::Recording);
 
         const QByteArray dummyWav("RIFFdummyWAVdata");
         QMetaObject::invokeMethod(&pipeline, "onRecordingFinished", Q_ARG(QByteArray, dummyWav));
@@ -172,6 +176,20 @@ private slots:
         pipeline.setActiveBackend(TranscriptionPipeline::Backend::Groq);
         pipeline.initialize();
 
+        // 1. Cancel during recording
+        AudioRecorder recorder;
+        pipeline.setAudioRecorder(&recorder);
+        pipeline.setState(TranscriptionPipeline::State::Recording);
+
+        pipeline.cancel();
+        QCOMPARE(pipeline.state(), TranscriptionPipeline::State::Idle);
+        QCOMPARE(groqClient.m_transcribeCallCount, 0);
+        QVERIFY(groqClient.m_lastReceivedWav.isEmpty());
+        QCOMPARE(groqClient.m_cancelled, true);
+
+        // 2. Cancel during transcribing
+        groqClient.m_cancelled = false;
+        pipeline.setState(TranscriptionPipeline::State::Recording);
         const QByteArray dummyWav("RIFFdummyWAVdata");
         QMetaObject::invokeMethod(&pipeline, "onRecordingFinished", Q_ARG(QByteArray, dummyWav));
         QCOMPARE(pipeline.state(), TranscriptionPipeline::State::Transcribing);
@@ -179,6 +197,32 @@ private slots:
         pipeline.cancel();
         QCOMPARE(pipeline.state(), TranscriptionPipeline::State::Idle);
         QCOMPARE(groqClient.m_cancelled, true);
+    }
+
+    void testIgnoreRecordingFinishedWhenNotRecording() {
+        TranscriptionPipeline pipeline;
+        FakeSttClient groqClient;
+        pipeline.registerBackend(TranscriptionPipeline::Backend::Groq, &groqClient);
+        pipeline.setActiveBackend(TranscriptionPipeline::Backend::Groq);
+        pipeline.initialize();
+
+        QCOMPARE(pipeline.state(), TranscriptionPipeline::State::Idle);
+
+        const QByteArray dummyWav("RIFFdummyWAVdata");
+        QMetaObject::invokeMethod(&pipeline, "onRecordingFinished", Q_ARG(QByteArray, dummyWav));
+
+        // State remains Idle and transcribe is NOT called
+        QCOMPARE(pipeline.state(), TranscriptionPipeline::State::Idle);
+        QCOMPARE(groqClient.m_transcribeCallCount, 0);
+    }
+
+    void testAudioRecorderCancelRecording() {
+        AudioRecorder recorder;
+        QSignalSpy finishedSpy(&recorder, &AudioRecorder::recordingFinished);
+
+        recorder.cancelRecording();
+        QCOMPARE(recorder.recording(), false);
+        QCOMPARE(finishedSpy.count(), 0);
     }
 
     void testClientReadinessAndCanRecord() {

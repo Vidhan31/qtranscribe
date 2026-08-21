@@ -31,6 +31,7 @@ public:
 
     Q_INVOKABLE void startRecording();
     Q_INVOKABLE void stopRecording();
+    Q_INVOKABLE void cancelRecording();
 
 signals:
     void recordingFinished(const QByteArray& wavData);

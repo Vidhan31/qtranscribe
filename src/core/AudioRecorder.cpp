@@ -38,7 +38,7 @@ AudioRecorder::AudioRecorder(QObject* parent)
 
 AudioRecorder::~AudioRecorder() {
     if (m_recording) {
-        stopRecording();
+        cancelRecording();
     }
 }
 
@@ -184,6 +184,29 @@ void AudioRecorder::stopRecording() {
     m_pcmData.clear();
     m_pcmData.squeeze();
     emit recordingFinished(wavData);
+}
+
+void AudioRecorder::cancelRecording() {
+    if (!m_recording) {
+        return;
+    }
+
+    m_maxDurationTimer->stop();
+    qCDebug(lcAudio) << "Cancelling audio recording...";
+
+    if (m_source) {
+        m_source->stop();
+        delete m_source;
+        m_source = nullptr;
+    }
+    m_ioDevice = nullptr;
+
+    m_pcmData.clear();
+    m_pcmData.squeeze();
+
+    setRecording(false);
+    setAudioLevel(0.0);
+    setStatusMessage(u"Recording cancelled"_s);
 }
 
 void AudioRecorder::onReadyRead() {

@@ -221,8 +221,8 @@ void TranscriptionPipeline::toggleRecording() {
 }
 
 void TranscriptionPipeline::cancel() {
-    if (m_state == State::Recording && m_recorder) {
-        m_recorder->stopRecording();
+    if (m_recorder) {
+        m_recorder->cancelRecording();
     }
     if (auto* stt = activeSttClient()) {
         stt->cancel();
@@ -275,6 +275,11 @@ void TranscriptionPipeline::clearLastTranscription() {
 }
 
 void TranscriptionPipeline::onRecordingFinished(const QByteArray& wavData) {
+    if (m_state != State::Recording) {
+        qCDebug(lcSpeech) << "TranscriptionPipeline: Ignoring recordingFinished — not in Recording state";
+        return;
+    }
+
     if (wavData.isEmpty()) {
         qCDebug(lcSpeech) << "TranscriptionPipeline: Empty audio payload, resetting to Idle";
         setState(State::Idle);
