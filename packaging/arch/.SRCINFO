@@ -14,6 +14,7 @@ pkgbase = qtranscribe
 	makedepends = pkgconf
 	makedepends = vulkan-headers
 	makedepends = shaderc
+	makedepends = spirv-headers
 	depends = qt6-base
 	depends = qt6-declarative
 	depends = qt6-multimedia
