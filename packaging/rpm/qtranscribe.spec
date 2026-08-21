@@ -1,7 +1,7 @@
 %global debug_package %{nil}
 
 Name:           qtranscribe
-Version:        %{?version}%{!?version:1.0.0}
+Version:        %{?version}%{!?version:1.1.0}
 Release:        %{?release}%{!?release:1}%{?dist}
 Summary:        Fast and modern speech-to-text desktop application
 
