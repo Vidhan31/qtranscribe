@@ -42,7 +42,7 @@ public:
     QString modelsDirectory() const;
     QString modelFileName() const;
     QString computeDevice() const;
-    QString lastError() const;
+    QString lastError() const override;
     bool isVulkanSupported() const;
 
     bool isReady() const override;

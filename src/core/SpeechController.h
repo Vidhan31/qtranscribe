@@ -1,6 +1,7 @@
 #pragma once
 
-#include <QHash>
+#include "TranscriptionPipeline.h"
+
 #include <QObject>
 #include <QQmlEngine>
 #include <QString>
@@ -16,7 +17,6 @@ class GroqLlmClient;
 class TextInjectorClient;
 class TranscriptionModel;
 class QSoundEffect;
-class QTimer;
 
 class SpeechController : public QObject {
     Q_OBJECT
@@ -60,6 +60,9 @@ public:
 public:
     explicit SpeechController(QObject* parent = nullptr);
     ~SpeechController() override = default;
+
+    void setPipeline(TranscriptionPipeline* pipeline);
+    TranscriptionPipeline* pipeline() const;
 
     void registerSttClient(TranscriptionBackend backend, AbstractSttClient* client);
     void setSttClient(GroqSttClient* sttClient);
@@ -146,40 +149,25 @@ signals:
 
 private slots:
     void onShortcutActivated(const QString& shortcutId);
-    void onRecordingFinished(const QByteArray& wavData);
-    void onTranscriptionReady(const QString& text);
-    void onSttError(const QString& error);
-    void onLlmEnhancementReady(const QString& enhancedText);
-    void onLlmError(const QString& error, const QString& fallbackRawText);
-    void onMaxDurationReached();
+    void onPipelineTranscriptionFinished(const QString& text);
+    void onPipelineStateChanged(TranscriptionPipeline::State state);
     void updatePresenterState();
 
 private:
-    AbstractSttClient* activeSttClient() const;
-    void setDictationState(DictationState state);
-    void setStatusMessage(const QString& msg);
-    void setLastError(const QString& error);
     void finishTranscriptionAndInject(const QString& text);
     static int calculateWordCount(const QString& text);
 
+    TranscriptionPipeline* m_pipeline = nullptr;
+    bool m_ownsPipeline = false;
+
     GroqApiClient* m_apiClient = nullptr;
     GlobalShortcutManager* m_shortcutMgr = nullptr;
-    AudioRecorder* m_recorder = nullptr;
-    QHash<TranscriptionBackend, AbstractSttClient*> m_sttClients;
-    GroqLlmClient* m_llmClient = nullptr;
     TextInjectorClient* m_injector = nullptr;
     TranscriptionModel* m_historyModel = nullptr;
     QSoundEffect* m_startChime = nullptr;
     QSoundEffect* m_stopChime = nullptr;
-    QTimer* m_maxDurationWarningTimer = nullptr;
 
-    TranscriptionBackend m_activeBackend = TranscriptionBackend::Groq;
     bool m_soundEnabled = true;
     bool m_initialized = false;
-    bool m_showMaxDurationNotice = false;
-    DictationState m_state = DictationState::Idle;
-    QString m_statusMessage;
-    QString m_lastError;
-    QString m_lastTranscription;
     QString m_dictationPadText;
 };

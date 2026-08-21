@@ -35,7 +35,7 @@ public:
     void setApiClient(GroqApiClient* apiClient);
     GroqApiClient* apiClient() const;
 
-    QString lastError() const;
+    QString lastError() const override;
     ErrorCategory errorCategory() const;
     int retrySecondsRemaining() const;
 
@@ -59,7 +59,7 @@ public:
 
     Q_INVOKABLE void transcribe(const QByteArray& wavData) override;
     Q_INVOKABLE void transcribe(const QByteArray& wavData, const QString& filename);
-    Q_INVOKABLE void retryLast();
+    Q_INVOKABLE void retryLast() override;
     Q_INVOKABLE void cancel() override;
 
 signals:

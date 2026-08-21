@@ -21,6 +21,7 @@ qt_add_qml_module(qtranscribe_ui
         ${CMAKE_SOURCE_DIR}/src/core/GroqLlmClient.h
         ${CMAKE_SOURCE_DIR}/src/core/GroqUsageTracker.h
         ${CMAKE_SOURCE_DIR}/src/core/SpeechController.h
+        ${CMAKE_SOURCE_DIR}/src/core/TranscriptionPipeline.h
         ${CMAKE_SOURCE_DIR}/src/core/TextInjectorClient.h
         ${CMAKE_SOURCE_DIR}/src/core/TranscriptionModel.h
         ${CMAKE_SOURCE_DIR}/src/core/TrayIconHelper.h

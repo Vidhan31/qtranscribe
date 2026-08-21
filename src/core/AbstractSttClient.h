@@ -21,6 +21,7 @@ public:
 
     virtual void transcribe(const QByteArray& wavData) = 0;
     virtual void cancel() = 0;
+    virtual void retryLast();
     virtual bool isReady() const = 0;
     virtual bool isBusy() const = 0;
 
@@ -29,6 +30,7 @@ public:
 
     virtual bool hasNotice() const;
     virtual QVariantMap notice() const;
+    virtual QString lastError() const;
 
 signals:
     void transcriptionReady(const QString& text);

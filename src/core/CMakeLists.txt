@@ -31,6 +31,8 @@ add_library(qtranscribe_core STATIC
     TextInjectorClient.cpp
     SpeechController.h
     SpeechController.cpp
+    TranscriptionPipeline.h
+    TranscriptionPipeline.cpp
     TranscriptionModel.h
     TranscriptionModel.cpp
     DBusService.h
