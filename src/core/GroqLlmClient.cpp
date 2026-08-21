@@ -295,8 +295,7 @@ void GroqLlmClient::handleProcessResponse(const GroqApiResponse& res) {
         enhancedText = rawFallback;
     }
 
-    qCDebug(lcLLM) << "LLM enhancement succeeded -> Length:" << enhancedText.size()
-                   << "Snippet:" << (enhancedText.size() > 60 ? enhancedText.left(60) + u"…"_s : enhancedText);
+    qCDebug(lcLLM) << "LLM enhancement succeeded -> Length:" << enhancedText.size() << "chars";
 
     setLastError({});
     emit enhancementReady(enhancedText);

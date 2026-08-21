@@ -345,8 +345,7 @@ void GroqSttClient::handleTranscribeResponse(const GroqApiResponse& res) {
         return;
     }
 
-    qCDebug(lcNetwork) << "Transcription successfully received -> Length:" << text.size()
-                       << "Snippet:" << (text.size() > 50 ? text.left(50) + u"…"_s : text);
+    qCDebug(lcNetwork) << "Transcription successfully received -> Length:" << text.size() << "chars";
 
     setLastError({}, ErrorCategory::None);
     emit transcriptionReady(text);
