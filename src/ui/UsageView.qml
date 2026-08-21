@@ -8,7 +8,7 @@ import "controls"
 Item {
     id: root
 
-    signal openSettingsRequested
+    signal navigateRequested(var target)
 
     implicitWidth: 620
     implicitHeight: 540
@@ -88,7 +88,7 @@ Item {
                 message: qsTr(
                              "Enter your Groq API key in Settings to track live rate limits, tokens, and transcription performance.")
                 actionText: qsTr("Open Settings")
-                onActionClicked: root.openSettingsRequested()
+                onActionClicked: root.navigateRequested("apiKey")
             }
 
             StatusBanner {

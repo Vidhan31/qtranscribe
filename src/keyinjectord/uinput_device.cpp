@@ -13,6 +13,8 @@
 
 namespace keyinjectord {
 
+using namespace std::chrono_literals;
+
 UinputDevice::UinputDevice(int uinputFd, int delayMs)
     : m_fd(uinputFd)
     , m_delay(delayMs) {
@@ -45,7 +47,7 @@ UinputDevice::UinputDevice(int uinputFd, int delayMs)
 
     KEYINJECTORD_LOG_INFO("Virtual keyboard created: %s", libevdev_uinput_get_devnode(m_uidev));
     KEYINJECTORD_LOG_DEBUG("Waiting 200ms for udev registration...");
-    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    std::this_thread::sleep_for(200ms);
     KEYINJECTORD_LOG_DEBUG("Virtual uinput device ready");
 }
 

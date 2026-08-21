@@ -1,5 +1,6 @@
 #include "GroqResponseParser.h"
 
+#include <QHttpHeaders>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QNetworkRequest>
@@ -67,7 +68,11 @@ GroqApiResponse parseReply(QNetworkReply* reply, qint64 latencyMs) {
     response.rawBody = responseBody;
     response.networkError = netErr;
     response.isRateLimited = (httpStatus == 429);
-    response.retryAfterSeconds = parseRetryAfterSeconds(reply->rawHeader("retry-after"));
+    QByteArray retryAfterRaw = reply->headers().value(QHttpHeaders::WellKnownHeader::RetryAfter).toByteArray();
+    if (retryAfterRaw.isEmpty()) {
+        retryAfterRaw = reply->rawHeader("retry-after");
+    }
+    response.retryAfterSeconds = parseRetryAfterSeconds(retryAfterRaw);
 
     if (netErr == QNetworkReply::NoError && httpStatus >= 200 && httpStatus < 300) {
         response.isSuccess = true;

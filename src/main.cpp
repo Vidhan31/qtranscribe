@@ -9,6 +9,7 @@
 #include "TranscriptionModel.h"
 
 #include "GlobalShortcutManager.h"
+#include "TranscriptionPipeline.h"
 #include "WhisperModelManager.h"
 #include "WhisperSttClient.h"
 
@@ -24,6 +25,7 @@
 Q_IMPORT_QML_PLUGIN(QTranscribePlugin)
 
 using namespace Qt::StringLiterals;
+using namespace std::chrono_literals;
 
 #ifndef QTRANSCRIBE_VERSION
 #define QTRANSCRIBE_VERSION "0.0.0-dev"
@@ -40,7 +42,7 @@ int main(int argc, char* argv[]) {
         QQuickStyle::setFallbackStyle(u"Fusion"_s);
     }
     app.setApplicationName(u"QTranscribe"_s);
-    app.setApplicationVersion(QStringLiteral(QTRANSCRIBE_VERSION));
+    app.setApplicationVersion(u"" QTRANSCRIBE_VERSION ""_s);
     app.setOrganizationName(u"QTranscribe"_s);
     app.setOrganizationDomain(u"io.github.qtranscribe"_s);
     app.setDesktopFileName(u"io.github.qtranscribe"_s);
@@ -86,8 +88,8 @@ int main(int argc, char* argv[]) {
     }
 
     QIcon appIcon;
-    const static QList<int> iconSizes = {16, 24, 32, 64, 128, 256, 512};
-    for (int sz : iconSizes) {
+    static constexpr int kIconSizes[] = {16, 24, 32, 64, 128, 256, 512};
+    for (int sz : kIconSizes) {
         appIcon.addFile(QString(u":/qt/qml/QTranscribe/assets/speech-to-text-%1.png"_s).arg(sz), QSize(sz, sz));
     }
     app.setWindowIcon(appIcon);
@@ -110,6 +112,7 @@ int main(int argc, char* argv[]) {
     auto* shortcut = engine.singletonInstance<GlobalShortcutManager*>("QTranscribe", "GlobalShortcutManager");
     auto* injector = engine.singletonInstance<TextInjectorClient*>("QTranscribe", "TextInjectorClient");
     auto* history = engine.singletonInstance<TranscriptionModel*>("QTranscribe", "TranscriptionModel");
+    auto* pipeline = engine.singletonInstance<TranscriptionPipeline*>("QTranscribe", "TranscriptionPipeline");
     auto* controller = engine.singletonInstance<SpeechController*>("QTranscribe", "SpeechController");
 
     if (stt && api)
@@ -121,12 +124,19 @@ int main(int argc, char* argv[]) {
     if (tracker && api)
         tracker->setApiClient(api);
 
+    if (pipeline) {
+        pipeline->setAudioRecorder(recorder);
+        pipeline->registerBackend(TranscriptionPipeline::Backend::Groq, stt);
+        pipeline->registerBackend(TranscriptionPipeline::Backend::WhisperCpp, whisperStt);
+        pipeline->setLlmClient(llm);
+    }
+
     if (controller) {
+        if (pipeline) {
+            controller->setPipeline(pipeline);
+        }
+        controller->setApiClient(api);
         controller->setShortcutManager(shortcut);
-        controller->setAudioRecorder(recorder);
-        controller->registerSttClient(SpeechController::TranscriptionBackend::Groq, stt);
-        controller->registerSttClient(SpeechController::TranscriptionBackend::WhisperCpp, whisperStt);
-        controller->setLlmClient(llm);
         controller->setTextInjector(injector);
         controller->setHistoryModel(history);
         controller->initialize();
@@ -136,7 +146,7 @@ int main(int argc, char* argv[]) {
     }
 
     if (parser.isSet(toggleOption) || parser.isSet(startOption)) {
-        QTimer::singleShot(200, [controller]() {
+        QTimer::singleShot(200ms, [controller]() {
             if (controller) {
                 controller->startRecording();
             }
@@ -144,7 +154,7 @@ int main(int argc, char* argv[]) {
     }
 
     if (parser.isSet(showOption)) {
-        QTimer::singleShot(100, [controller]() {
+        QTimer::singleShot(100ms, [controller]() {
             if (controller) {
                 controller->showWindow();
             }

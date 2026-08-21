@@ -10,6 +10,7 @@
 #include <unistd.h>
 
 using namespace Qt::StringLiterals;
+using namespace std::chrono_literals;
 
 DaemonConnector::DaemonConnector(QObject* parent)
     : QObject(parent)

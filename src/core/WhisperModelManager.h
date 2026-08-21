@@ -1,47 +1,12 @@
 #pragma once
 
+#include "WhisperModelStorage.h"
+
 #include <QAbstractListModel>
-#include <QElapsedTimer>
-#include <QList>
-#include <QNetworkAccessManager>
-#include <QPointer>
 #include <QQmlEngine>
-#include <QScopedPointer>
 #include <QString>
 
-class QFile;
-class QNetworkReply;
-
-struct WhisperModelItem {
-    QString id;
-    QString name;
-    QString fileName;
-    QString downloadUrl;
-    qint64 sizeBytes = 0;
-    QString sizeFormatted;
-    QString description;
-    bool isInstalled = false;
-    qint64 installedSizeBytes = 0;
-    QString installedSizeFormatted;
-
-    // Live download state
-    bool isDownloading = false;
-    qreal progress = 0.0;
-    qint64 bytesReceived = 0;
-    qint64 totalBytes = 0;
-    QString speedFormatted;
-
-    WhisperModelItem() = default;
-    WhisperModelItem(QString id_, QString name_, QString fileName_, QString downloadUrl_, qint64 sizeBytes_,
-                     QString sizeFormatted_, QString description_)
-        : id(std::move(id_))
-        , name(std::move(name_))
-        , fileName(std::move(fileName_))
-        , downloadUrl(std::move(downloadUrl_))
-        , sizeBytes(sizeBytes_)
-        , sizeFormatted(std::move(sizeFormatted_))
-        , description(std::move(description_)) { }
-};
+#include <memory>
 
 class WhisperModelManager : public QAbstractListModel {
     Q_OBJECT
@@ -83,12 +48,14 @@ public:
     Q_ENUM(Roles)
 
     explicit WhisperModelManager(QObject* parent = nullptr);
+    explicit WhisperModelManager(std::unique_ptr<WhisperModelStorage> storage, QObject* parent = nullptr);
     ~WhisperModelManager() override;
 
-    // QAbstractListModel interface
     int rowCount(const QModelIndex& parent = QModelIndex()) const override;
     QVariant data(const QModelIndex& index, int role = Qt::DisplayRole) const override;
     QHash<int, QByteArray> roleNames() const override;
+
+    WhisperModelStorage* storage() const;
 
     QString modelsDirectory() const;
     QString selectedModelId() const;
@@ -123,35 +90,9 @@ signals:
     void diskSpaceChanged();
     void modelDownloadFinished(const QString& modelId, bool success, const QString& error);
 
-private slots:
-    void onDownloadReadyRead();
-    void onDownloadProgress(qint64 bytesReceived, qint64 bytesTotal);
-    void onDownloadFinished();
-
 private:
-    void initPresets();
-    void scanInstalledModels();
-    void cleanupOrphanedPartFiles();
-    void setLastError(const QString& error);
-    int findModelIndex(const QString& modelId) const;
-    static QString formatBytes(qint64 bytes);
+    void setupStorageConnections();
 
-    QList<WhisperModelItem> m_models;
+    std::unique_ptr<WhisperModelStorage> m_storage;
     QString m_selectedModelId;
-    QString m_lastError;
-    qint64 m_availableDiskSpace = 0;
-
-    // Download state
-    QNetworkAccessManager m_nam;
-    QPointer<QNetworkReply> m_currentReply;
-    QScopedPointer<QFile> m_partFile;
-    QString m_downloadingModelId;
-    QString m_downloadAbortReason;
-    qreal m_currentProgress = 0.0;
-    qint64 m_currentBytesReceived = 0;
-    qint64 m_currentTotalBytes = 0;
-    QString m_currentSpeedFormatted;
-    QElapsedTimer m_downloadTimer;
-    qint64 m_lastSpeedBytes = 0;
-    qint64 m_lastSpeedTimeMs = 0;
 };

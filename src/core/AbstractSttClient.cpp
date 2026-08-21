@@ -7,10 +7,8 @@ void AbstractSttClient::activate() { }
 
 void AbstractSttClient::deactivate() { }
 
-bool AbstractSttClient::hasNotice() const {
-    return false;
-}
+void AbstractSttClient::retryLast() { }
 
-QVariantMap AbstractSttClient::notice() const {
+QString AbstractSttClient::lastError() const {
     return {};
 }

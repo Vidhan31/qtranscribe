@@ -12,14 +12,16 @@
 #include <algorithm>
 
 using namespace Qt::StringLiterals;
+using namespace std::chrono_literals;
 
 GroqLlmClient::GroqLlmClient(QObject* parent)
-    : ApiRequestHandler(parent) {
+    : QObject(parent)
+    , m_retryTimer(new QTimer(this)) {
     QSettings settings;
     m_enabled = settings.value(u"Groq/LlmEnabled"_s, false).toBool();
-    m_selectedModel = settings.value(u"Groq/LlmModel"_s, QString::fromLatin1(kDefaultModel)).toString();
+    m_selectedModel = settings.value(u"Groq/LlmModel"_s, kDefaultModel.toString()).toString();
     if (m_selectedModel.isEmpty() || m_selectedModel == u"llama-3.1-8b-instant"_s) {
-        m_selectedModel = QString::fromLatin1(kDefaultModel);
+        m_selectedModel = kDefaultModel.toString();
     }
     m_activePreset = settings.value(u"Groq/LlmPreset"_s, u"grammar"_s).toString();
     if (m_activePreset.isEmpty()) {
@@ -27,6 +29,13 @@ GroqLlmClient::GroqLlmClient(QObject* parent)
     }
     m_customPrompt = settings.value(u"Groq/LlmCustomPrompt"_s, QString()).toString();
     m_temperature = settings.value(u"Groq/LlmTemperature"_s, 0.1).toDouble();
+
+    m_retryTimer->setSingleShot(true);
+    connect(m_retryTimer, &QTimer::timeout, this, [this]() {
+        if (!m_requestRunner.isCancelled() && !m_pendingRawText.isEmpty()) {
+            sendProcessRequest();
+        }
+    });
 }
 
 void GroqLlmClient::setApiClient(GroqApiClient* apiClient) {
@@ -35,6 +44,21 @@ void GroqLlmClient::setApiClient(GroqApiClient* apiClient) {
 
 GroqApiClient* GroqLlmClient::apiClient() const {
     return m_apiClient;
+}
+
+bool GroqLlmClient::isBusy() const {
+    return m_requestRunner.isBusy();
+}
+
+bool GroqLlmClient::isCancelled() const {
+    return m_requestRunner.isCancelled();
+}
+
+void GroqLlmClient::setBusy(bool busy) {
+    if (m_requestRunner.isBusy() != busy) {
+        m_requestRunner.setBusy(busy);
+        emit busyChanged();
+    }
 }
 
 bool GroqLlmClient::enabled() const {
@@ -62,7 +86,7 @@ QString GroqLlmClient::selectedModel() const {
 void GroqLlmClient::setSelectedModel(const QString& model) {
     QString trimmed = model.trimmed();
     if (trimmed.isEmpty()) {
-        trimmed = QString::fromLatin1(kDefaultModel);
+        trimmed = kDefaultModel.toString();
     }
     if (m_selectedModel != trimmed) {
         m_selectedModel = trimmed;
@@ -140,8 +164,15 @@ QString GroqLlmClient::currentSystemPrompt() const {
 }
 
 void GroqLlmClient::cancel() {
-    ApiRequestHandler::cancel();
+    const bool wasBusy = m_requestRunner.isBusy();
+    if (m_retryTimer) {
+        m_retryTimer->stop();
+    }
+    m_requestRunner.cancel();
     m_pendingRawText.clear();
+    if (wasBusy) {
+        emit busyChanged();
+    }
 }
 
 void GroqLlmClient::processText(const QString& rawText) {
@@ -165,14 +196,18 @@ void GroqLlmClient::processText(const QString& rawText) {
         return;
     }
 
-    prepareNewRequest();
+    if (m_retryTimer) {
+        m_retryTimer->stop();
+    }
+    m_requestRunner.prepareNewRequest();
     m_pendingRawText = rawText;
 
     sendProcessRequest();
 }
 
 void GroqLlmClient::sendProcessRequest() {
-    if (!m_apiClient || !m_apiClient->apiKeySet() || m_pendingRawText.trimmed().isEmpty() || m_cancelled) {
+    if (!m_apiClient || !m_apiClient->apiKeySet() || m_pendingRawText.trimmed().isEmpty() ||
+        m_requestRunner.isCancelled()) {
         setBusy(false);
         return;
     }
@@ -180,12 +215,12 @@ void GroqLlmClient::sendProcessRequest() {
     setBusy(true);
     setLastError({});
 
-    QString modelToUse =
-        m_selectedModel.trimmed().isEmpty() ? QString::fromLatin1(kDefaultModel) : m_selectedModel.trimmed();
+    QString modelToUse = m_selectedModel.trimmed().isEmpty() ? kDefaultModel.toString() : m_selectedModel.trimmed();
     QString systemPrompt = currentSystemPrompt();
 
     qCDebug(lcLLM) << "Dispatching Groq LLM completion request -> Model:" << modelToUse << "Preset:" << m_activePreset
-                   << "Input length:" << m_pendingRawText.size() << "chars" << "(Retry attempt:" << m_retryCount << ")";
+                   << "Input length:" << m_pendingRawText.size() << "chars"
+                   << "(Retry attempt:" << m_requestRunner.retryCount() << ")";
 
     QJsonObject rootObj;
     rootObj[u"model"_s] = modelToUse;
@@ -207,39 +242,44 @@ void GroqLlmClient::sendProcessRequest() {
     rootObj[u"reasoning_format"_s] = u"hidden"_s;
     rootObj[u"stream"_s] = false;
 
-    m_currentReply = m_apiClient->postJson(u"chat/completions"_s, rootObj, u"LLM Post-Processing"_s, modelToUse,
-                                           [this](const GroqApiResponse& res) { handleProcessResponse(res); });
+    auto* reply = m_apiClient->postJson(u"chat/completions"_s, rootObj, u"LLM Post-Processing"_s, modelToUse,
+                                        [this](const GroqApiResponse& res) { handleProcessResponse(res); });
+    m_requestRunner.setCurrentReply(reply);
 }
 
 void GroqLlmClient::handleProcessResponse(const GroqApiResponse& res) {
-    m_currentReply = nullptr;
+    m_requestRunner.setCurrentReply(nullptr);
 
     qCDebug(lcLLM) << "Groq LLM HTTP response received -> Status:" << res.httpStatus << "Elapsed time:" << res.latencyMs
                    << "ms";
 
-    if (m_cancelled || res.networkError == QNetworkReply::OperationCanceledError) {
+    if (m_requestRunner.isCancelled() || res.networkError == QNetworkReply::OperationCanceledError) {
         qCDebug(lcLLM) << "GroqLlmClient: Request cancelled/aborted, ignoring response";
+        if (m_retryTimer) {
+            m_retryTimer->stop();
+        }
         setBusy(false);
         return;
     }
 
     if (!res.isSuccess) {
-        if (shouldRetry(res) && !m_pendingRawText.isEmpty()) {
-            m_retryCount++;
-            const int delayMs = calculateRetryDelayMs(res);
+        if (m_requestRunner.shouldRetry(res) && !m_pendingRawText.isEmpty()) {
+            m_requestRunner.incrementRetryCount();
+            const int delayMs = m_requestRunner.calculateRetryDelayMs(res);
             qCDebug(lcLLM) << "GroqLlmClient: Transient error encountered (Status:" << res.httpStatus
                            << "Error:" << res.networkError << "). Scheduling retry in" << delayMs << "ms (Attempt"
-                           << m_retryCount << "/1)";
-            QTimer::singleShot(delayMs, this, [this]() {
-                if (!m_cancelled && !m_pendingRawText.isEmpty()) {
-                    sendProcessRequest();
-                }
-            });
+                           << m_requestRunner.retryCount() << "/" << m_requestRunner.policy().maxRetries << ")";
+            if (m_retryTimer) {
+                m_retryTimer->start(delayMs);
+            }
             return;
         }
 
         const QString rawFallback = m_pendingRawText;
-        m_retryCount = 0;
+        if (m_retryTimer) {
+            m_retryTimer->stop();
+        }
+        m_requestRunner.reset();
         m_pendingRawText.clear();
         setBusy(false);
 
@@ -250,8 +290,11 @@ void GroqLlmClient::handleProcessResponse(const GroqApiResponse& res) {
         return;
     }
 
-    m_retryCount = 0;
     const QString rawFallback = m_pendingRawText;
+    if (m_retryTimer) {
+        m_retryTimer->stop();
+    }
+    m_requestRunner.reset();
     m_pendingRawText.clear();
     setBusy(false);
 
@@ -273,8 +316,7 @@ void GroqLlmClient::handleProcessResponse(const GroqApiResponse& res) {
         enhancedText = rawFallback;
     }
 
-    qCDebug(lcLLM) << "LLM enhancement succeeded -> Length:" << enhancedText.size()
-                   << "Snippet:" << (enhancedText.size() > 60 ? enhancedText.left(60) + u"…"_s : enhancedText);
+    qCDebug(lcLLM) << "LLM enhancement succeeded -> Length:" << enhancedText.size() << "chars";
 
     setLastError({});
     emit enhancementReady(enhancedText);

@@ -31,6 +31,7 @@ public:
 
     Q_INVOKABLE void startRecording();
     Q_INVOKABLE void stopRecording();
+    Q_INVOKABLE void cancelRecording();
 
 signals:
     void recordingFinished(const QByteArray& wavData);
@@ -64,5 +65,5 @@ private:
     static constexpr int kSampleRate = 16000;
     static constexpr int kChannelCount = 1;
     static constexpr int kSampleSize = 16;
-    static constexpr int kMaxRecordingDurationMs = 300000; // 5 minutes ceiling
+    static constexpr auto kMaxRecordingDuration = std::chrono::minutes(5);
 };

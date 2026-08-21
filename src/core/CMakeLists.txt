@@ -9,14 +9,16 @@ add_library(qtranscribe_core STATIC
     GroqApiClient.cpp
     GroqResponseParser.h
     GroqResponseParser.cpp
-    ApiRequestHandler.h
-    ApiRequestHandler.cpp
+    HttpRequestRunner.h
+    HttpRequestRunner.cpp
     GroqSttClient.h
     GroqSttClient.cpp
     WhisperWorker.h
     WhisperWorker.cpp
     WhisperSttClient.h
     WhisperSttClient.cpp
+    WhisperModelStorage.h
+    WhisperModelStorage.cpp
     WhisperModelManager.h
     WhisperModelManager.cpp
     GroqLlmClient.h
@@ -31,6 +33,8 @@ add_library(qtranscribe_core STATIC
     TextInjectorClient.cpp
     SpeechController.h
     SpeechController.cpp
+    TranscriptionPipeline.h
+    TranscriptionPipeline.cpp
     TranscriptionModel.h
     TranscriptionModel.cpp
     DBusService.h

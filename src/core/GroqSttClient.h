@@ -1,12 +1,9 @@
 #pragma once
 
-#include "ApiRequestHandler.h"
-
 #include "AbstractSttClient.h"
 #include "GroqResponseParser.h"
+#include "HttpRequestRunner.h"
 
-#include <QNetworkReply>
-#include <QPointer>
 #include <QQmlEngine>
 #include <QString>
 
@@ -30,12 +27,12 @@ public:
     Q_ENUM(ErrorCategory)
 
     explicit GroqSttClient(QObject* parent = nullptr);
-    ~GroqSttClient() override;
+    ~GroqSttClient() override = default;
 
     void setApiClient(GroqApiClient* apiClient);
     GroqApiClient* apiClient() const;
 
-    QString lastError() const;
+    QString lastError() const override;
     ErrorCategory errorCategory() const;
     int retrySecondsRemaining() const;
 
@@ -54,12 +51,10 @@ public:
 
     void activate() override;
     void deactivate() override;
-    bool hasNotice() const override;
-    QVariantMap notice() const override;
 
     Q_INVOKABLE void transcribe(const QByteArray& wavData) override;
     Q_INVOKABLE void transcribe(const QByteArray& wavData, const QString& filename);
-    Q_INVOKABLE void retryLast();
+    Q_INVOKABLE void retryLast() override;
     Q_INVOKABLE void cancel() override;
 
 signals:
@@ -75,10 +70,6 @@ private slots:
 
 private:
     void setBusy(bool busy);
-    void prepareNewRequest();
-    bool shouldRetry(const GroqApiResponse& res) const;
-    int calculateRetryDelayMs(const GroqApiResponse& res) const;
-
     void setLastError(const QString& error, ErrorCategory category = ErrorCategory::GeneralError);
     void setErrorCategory(ErrorCategory category);
     void setRetrySecondsRemaining(int seconds);
@@ -88,19 +79,16 @@ private:
 
     GroqApiClient* m_apiClient = nullptr;
     QTimer* m_retryCountdownTimer = nullptr;
-    ApiRequestHandler::RetryPolicy m_retryPolicy;
-    QPointer<QNetworkReply> m_currentReply;
+    QTimer* m_retryTimer = nullptr;
+    HttpRequestRunner m_requestRunner;
     QByteArray m_lastWavData;
     QString m_lastFilename;
     QString m_lastError;
     ErrorCategory m_errorCategory = ErrorCategory::None;
     int m_retrySecondsRemaining = 0;
-    int m_retryCount = 0;
-    bool m_busy = false;
-    bool m_cancelled = false;
     QString m_selectedModel;
     QString m_language;
     QString m_customPrompt;
 
-    static constexpr const char* kDefaultModel = "whisper-large-v3-turbo";
+    inline static constexpr QStringView kDefaultModel = u"whisper-large-v3-turbo";
 };

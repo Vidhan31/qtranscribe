@@ -3,11 +3,13 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QProcess>
 #include <QStandardPaths>
 #include <QTimer>
 
 using namespace Qt::StringLiterals;
+using namespace std::chrono_literals;
 
 ClipboardManager::ClipboardManager(QObject* parent)
     : QObject(parent)
@@ -18,19 +20,14 @@ ClipboardManager::ClipboardManager(QObject* parent)
             restore(m_savedClipboardText, m_hadClipboardContent);
             m_hasActiveBackup = false;
             m_savedClipboardText.clear();
-            m_hadClipboardContent = false;
         }
     });
 }
 
 ClipboardManager::~ClipboardManager() {
-    if (m_restoreTimer && m_restoreTimer->isActive()) {
+    if (m_hasActiveBackup) {
         m_restoreTimer->stop();
-        if (m_hasActiveBackup) {
-            restore(m_savedClipboardText, m_hadClipboardContent);
-            m_hasActiveBackup = false;
-            m_savedClipboardText.clear();
-        }
+        restore(m_savedClipboardText, m_hadClipboardContent);
     }
 }
 
@@ -53,12 +50,8 @@ void ClipboardManager::cancelPendingRestore() {
     if (m_restoreTimer->isActive()) {
         m_restoreTimer->stop();
     }
-    if (m_hasActiveBackup) {
-        restore(m_savedClipboardText, m_hadClipboardContent);
-        m_hasActiveBackup = false;
-        m_savedClipboardText.clear();
-        m_hadClipboardContent = false;
-    }
+    m_hasActiveBackup = false;
+    m_savedClipboardText.clear();
 }
 
 void ClipboardManager::scheduleRestore(const QString& backupText, bool hadContent, std::chrono::milliseconds delay) {
@@ -69,14 +62,15 @@ void ClipboardManager::scheduleRestore(const QString& backupText, bool hadConten
 }
 
 QString ClipboardManager::bundledWlToolPath(const QString& toolName) const {
-    const QString appDir = QCoreApplication::applicationDirPath();
-    const QStringList candidatePaths = {appDir + u"/"_s + toolName, appDir + u"/../"_s + toolName,
-                                        QDir::currentPath() + u"/"_s + toolName,
-                                        QStandardPaths::findExecutable(toolName)};
+    QString appDir = QCoreApplication::applicationDirPath();
+    QStringList searchLocations = {appDir + u"/"_s + toolName, appDir + u"/../libexec/"_s + toolName,
+                                   appDir + u"/libexec/"_s + toolName, u"/usr/lib/qtranscribe/"_s + toolName,
+                                   u"/usr/libexec/qtranscribe/"_s + toolName};
 
-    for (const QString& path : candidatePaths) {
-        if (!path.isEmpty() && QFile::exists(path)) {
-            return path;
+    for (const QString& candidate : searchLocations) {
+        QFileInfo fi(candidate);
+        if (fi.exists() && fi.isExecutable()) {
+            return candidate;
         }
     }
     return toolName;

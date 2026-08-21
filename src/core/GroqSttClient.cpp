@@ -9,20 +9,22 @@
 #include <QTimer>
 
 using namespace Qt::StringLiterals;
+using namespace std::chrono_literals;
 
 GroqSttClient::GroqSttClient(QObject* parent)
     : AbstractSttClient(parent)
-    , m_retryCountdownTimer(new QTimer(this)) {
+    , m_retryCountdownTimer(new QTimer(this))
+    , m_retryTimer(new QTimer(this)) {
     QSettings settings;
-    m_selectedModel = settings.value(u"Groq/Model"_s, QString::fromLatin1(kDefaultModel)).toString();
+    m_selectedModel = settings.value(u"Groq/Model"_s, kDefaultModel.toString()).toString();
     if (m_selectedModel.isEmpty() ||
         (m_selectedModel != u"whisper-large-v3-turbo"_s && m_selectedModel != u"whisper-large-v3"_s)) {
-        m_selectedModel = QString::fromLatin1(kDefaultModel);
+        m_selectedModel = kDefaultModel.toString();
     }
     m_language = settings.value(u"Groq/Language"_s, QString()).toString();
     m_customPrompt = settings.value(u"Groq/CustomPrompt"_s, QString()).toString();
 
-    m_retryCountdownTimer->setInterval(1000);
+    m_retryCountdownTimer->setInterval(1s);
     connect(m_retryCountdownTimer, &QTimer::timeout, this, [this]() {
         if (m_retrySecondsRemaining > 0) {
             setRetrySecondsRemaining(m_retrySecondsRemaining - 1);
@@ -30,12 +32,13 @@ GroqSttClient::GroqSttClient(QObject* parent)
             m_retryCountdownTimer->stop();
         }
     });
-}
 
-GroqSttClient::~GroqSttClient() {
-    if (m_currentReply) {
-        m_currentReply->abort();
-    }
+    m_retryTimer->setSingleShot(true);
+    connect(m_retryTimer, &QTimer::timeout, this, [this]() {
+        if (!m_requestRunner.isCancelled() && !m_lastWavData.isEmpty()) {
+            sendTranscribeRequest();
+        }
+    });
 }
 
 void GroqSttClient::setApiClient(GroqApiClient* apiClient) {
@@ -58,33 +61,14 @@ GroqApiClient* GroqSttClient::apiClient() const {
 
 void GroqSttClient::onApiKeySetChanged() {
     emit readyChanged();
-    emit noticeChanged();
 }
 
 void GroqSttClient::activate() {
     emit readyChanged();
-    emit noticeChanged();
 }
 
 void GroqSttClient::deactivate() {
     cancel();
-}
-
-bool GroqSttClient::hasNotice() const {
-    return !m_apiClient || !m_apiClient->apiKeySet();
-}
-
-QVariantMap GroqSttClient::notice() const {
-    QVariantMap noticeMap;
-    if (!m_apiClient || !m_apiClient->apiKeySet()) {
-        noticeMap[u"hasNotice"_s] = true;
-        noticeMap[u"type"_s] = u"warning"_s;
-        noticeMap[u"title"_s] = tr("Groq API Key Required");
-        noticeMap[u"message"_s] = tr("Configure your API key in Settings to begin speech transcription.");
-        noticeMap[u"actionText"_s] = tr("Configure API Key");
-        noticeMap[u"actionId"_s] = u"openApiKeySettings"_s;
-    }
-    return noticeMap;
 }
 
 bool GroqSttClient::isReady() const {
@@ -92,53 +76,18 @@ bool GroqSttClient::isReady() const {
 }
 
 bool GroqSttClient::isBusy() const {
-    return m_busy;
+    return m_requestRunner.isBusy();
 }
 
 bool GroqSttClient::isCancelled() const {
-    return m_cancelled;
+    return m_requestRunner.isCancelled();
 }
 
 void GroqSttClient::setBusy(bool busy) {
-    if (m_busy != busy) {
-        m_busy = busy;
+    if (m_requestRunner.isBusy() != busy) {
+        m_requestRunner.setBusy(busy);
         emit busyChanged();
     }
-}
-
-void GroqSttClient::prepareNewRequest() {
-    m_cancelled = false;
-    m_retryCount = 0;
-}
-
-bool GroqSttClient::shouldRetry(const GroqApiResponse& res) const {
-    if (m_cancelled || m_retryCount >= m_retryPolicy.maxRetries) {
-        return false;
-    }
-
-    if (res.httpStatus >= 500 && res.httpStatus <= 599) {
-        return true;
-    }
-
-    if (res.networkError == QNetworkReply::TimeoutError ||
-        res.networkError == QNetworkReply::TemporaryNetworkFailureError ||
-        res.networkError == QNetworkReply::NetworkSessionFailedError) {
-        return true;
-    }
-
-    if (res.isRateLimited && res.retryAfterSeconds > 0 &&
-        res.retryAfterSeconds <= m_retryPolicy.maxTransientRetryAfterSec) {
-        return true;
-    }
-
-    return false;
-}
-
-int GroqSttClient::calculateRetryDelayMs(const GroqApiResponse& res) const {
-    if (res.isRateLimited && res.retryAfterSeconds > 0) {
-        return res.retryAfterSeconds * 1000;
-    }
-    return m_retryPolicy.defaultDelayMs;
 }
 
 QString GroqSttClient::lastError() const {
@@ -174,7 +123,7 @@ QString GroqSttClient::selectedModel() const {
 void GroqSttClient::setSelectedModel(const QString& model) {
     QString trimmed = model.trimmed();
     if (trimmed.isEmpty()) {
-        trimmed = QString::fromLatin1(kDefaultModel);
+        trimmed = kDefaultModel.toString();
     }
     if (m_selectedModel != trimmed) {
         m_selectedModel = trimmed;
@@ -212,29 +161,32 @@ void GroqSttClient::setCustomPrompt(const QString& prompt) {
 }
 
 void GroqSttClient::cancel() {
-    m_cancelled = true;
-    if (m_currentReply) {
-        m_currentReply->abort();
-        m_currentReply = nullptr;
+    const bool wasBusy = m_requestRunner.isBusy();
+    if (m_retryTimer) {
+        m_retryTimer->stop();
     }
-    m_retryCount = 0;
+    m_requestRunner.cancel();
     m_retryCountdownTimer->stop();
     setRetrySecondsRemaining(0);
     m_lastWavData.clear();
     m_lastFilename.clear();
-    setBusy(false);
+    if (wasBusy) {
+        emit busyChanged();
+    }
 }
 
 void GroqSttClient::retryLast() {
     if (!m_lastWavData.isEmpty() && !isBusy()) {
-        m_cancelled = false;
-        m_retryCount = 0;
+        if (m_retryTimer) {
+            m_retryTimer->stop();
+        }
+        m_requestRunner.prepareNewRequest();
         sendTranscribeRequest();
     }
 }
 
 void GroqSttClient::transcribe(const QByteArray& wavData) {
-    transcribe(wavData, QStringLiteral("audio.wav"));
+    transcribe(wavData, u"audio.wav"_s);
 }
 
 void GroqSttClient::transcribe(const QByteArray& wavData, const QString& filename) {
@@ -258,7 +210,10 @@ void GroqSttClient::transcribe(const QByteArray& wavData, const QString& filenam
         return;
     }
 
-    prepareNewRequest();
+    if (m_retryTimer) {
+        m_retryTimer->stop();
+    }
+    m_requestRunner.prepareNewRequest();
     m_lastWavData = wavData;
     m_lastFilename = filename;
 
@@ -266,7 +221,7 @@ void GroqSttClient::transcribe(const QByteArray& wavData, const QString& filenam
 }
 
 void GroqSttClient::sendTranscribeRequest() {
-    if (!m_apiClient || !m_apiClient->apiKeySet() || m_lastWavData.isEmpty() || m_cancelled) {
+    if (!m_apiClient || !m_apiClient->apiKeySet() || m_lastWavData.isEmpty() || m_requestRunner.isCancelled()) {
         setBusy(false);
         return;
     }
@@ -274,8 +229,7 @@ void GroqSttClient::sendTranscribeRequest() {
     setBusy(true);
     setLastError({});
 
-    QString modelToUse =
-        m_selectedModel.trimmed().isEmpty() ? QString::fromLatin1(kDefaultModel) : m_selectedModel.trimmed();
+    QString modelToUse = m_selectedModel.trimmed().isEmpty() ? kDefaultModel.toString() : m_selectedModel.trimmed();
     QString langToUse = m_language.trimmed();
     QString promptToUse = m_customPrompt.trimmed();
     QString filenameToUse = m_lastFilename.isEmpty() ? u"audio.wav"_s : m_lastFilename;
@@ -283,8 +237,8 @@ void GroqSttClient::sendTranscribeRequest() {
     qCDebug(lcNetwork) << "Preparing Groq STT multipart request -> Model:" << modelToUse
                        << "Language:" << (langToUse.isEmpty() ? u"Auto-detect"_s : langToUse)
                        << "Prompt set:" << (!promptToUse.isEmpty()) << "Filename:" << filenameToUse
-                       << "Audio payload size:" << m_lastWavData.size() << "bytes" << "(Retry attempt:" << m_retryCount
-                       << ")";
+                       << "Audio payload size:" << m_lastWavData.size() << "bytes"
+                       << "(Retry attempt:" << m_requestRunner.retryCount() << ")";
 
     auto* multiPart = new QHttpMultiPart(QHttpMultiPart::FormDataType);
 
@@ -315,15 +269,16 @@ void GroqSttClient::sendTranscribeRequest() {
     QHttpPart filePart;
     filePart.setHeader(QNetworkRequest::ContentDispositionHeader,
                        u"form-data; name=\"file\"; filename=\"%1\""_s.arg(filenameToUse));
-    filePart.setHeader(QNetworkRequest::ContentTypeHeader, u"audio/wav"_s);
+    filePart.setHeader(QNetworkRequest::KnownHeaders::ContentTypeHeader, u"audio/wav"_s);
     filePart.setBody(m_lastWavData);
     multiPart->append(filePart);
 
     qCDebug(lcNetwork) << "Posting STT request via GroqApiClient";
 
-    m_currentReply =
+    auto* reply =
         m_apiClient->postMultipart(u"audio/transcriptions"_s, multiPart, u"Speech-to-Text (Whisper)"_s, modelToUse,
                                    [this](const GroqApiResponse& res) { handleTranscribeResponse(res); });
+    m_requestRunner.setCurrentReply(reply);
 }
 
 GroqSttClient::ErrorCategory GroqSttClient::classifyError(const GroqApiResponse& res, QString& outMessage) const {
@@ -347,33 +302,37 @@ GroqSttClient::ErrorCategory GroqSttClient::classifyError(const GroqApiResponse&
 }
 
 void GroqSttClient::handleTranscribeResponse(const GroqApiResponse& res) {
-    m_currentReply = nullptr;
+    m_requestRunner.setCurrentReply(nullptr);
 
     qCDebug(lcNetwork) << "Groq STT HTTP response received -> Status:" << res.httpStatus
                        << "Elapsed time:" << res.latencyMs << "ms";
 
-    if (m_cancelled || res.networkError == QNetworkReply::OperationCanceledError) {
+    if (m_requestRunner.isCancelled() || res.networkError == QNetworkReply::OperationCanceledError) {
         qCDebug(lcNetwork) << "GroqSttClient: Request cancelled/aborted, ignoring response";
+        if (m_retryTimer) {
+            m_retryTimer->stop();
+        }
         setBusy(false);
         return;
     }
 
     if (!res.isSuccess) {
-        if (shouldRetry(res) && !m_lastWavData.isEmpty()) {
-            m_retryCount++;
-            const int delayMs = calculateRetryDelayMs(res);
+        if (m_requestRunner.shouldRetry(res) && !m_lastWavData.isEmpty()) {
+            m_requestRunner.incrementRetryCount();
+            const int delayMs = m_requestRunner.calculateRetryDelayMs(res);
             qCDebug(lcNetwork) << "GroqSttClient: Transient error encountered (Status:" << res.httpStatus
                                << "Error:" << res.networkError << "). Scheduling retry in" << delayMs << "ms (Attempt"
-                               << m_retryCount << "/1)";
-            QTimer::singleShot(delayMs, this, [this]() {
-                if (!m_cancelled && !m_lastWavData.isEmpty()) {
-                    sendTranscribeRequest();
-                }
-            });
+                               << m_requestRunner.retryCount() << "/" << m_requestRunner.policy().maxRetries << ")";
+            if (m_retryTimer) {
+                m_retryTimer->start(delayMs);
+            }
             return;
         }
 
-        m_retryCount = 0;
+        if (m_retryTimer) {
+            m_retryTimer->stop();
+        }
+        m_requestRunner.reset();
         setBusy(false);
 
         QString errorText;
@@ -391,7 +350,10 @@ void GroqSttClient::handleTranscribeResponse(const GroqApiResponse& res) {
         return;
     }
 
-    m_retryCount = 0;
+    if (m_retryTimer) {
+        m_retryTimer->stop();
+    }
+    m_requestRunner.reset();
     m_lastWavData.clear();
     m_lastFilename.clear();
     m_retryCountdownTimer->stop();
@@ -407,8 +369,7 @@ void GroqSttClient::handleTranscribeResponse(const GroqApiResponse& res) {
         return;
     }
 
-    qCDebug(lcNetwork) << "Transcription successfully received -> Length:" << text.size()
-                       << "Snippet:" << (text.size() > 50 ? text.left(50) + u"…"_s : text);
+    qCDebug(lcNetwork) << "Transcription successfully received -> Length:" << text.size() << "chars";
 
     setLastError({}, ErrorCategory::None);
     emit transcriptionReady(text);

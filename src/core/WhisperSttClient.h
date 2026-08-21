@@ -42,7 +42,7 @@ public:
     QString modelsDirectory() const;
     QString modelFileName() const;
     QString computeDevice() const;
-    QString lastError() const;
+    QString lastError() const override;
     bool isVulkanSupported() const;
 
     bool isReady() const override;
@@ -50,8 +50,6 @@ public:
 
     void activate() override;
     void deactivate() override;
-    bool hasNotice() const override;
-    QVariantMap notice() const override;
 
     Q_INVOKABLE void transcribe(const QByteArray& wavData) override;
     Q_INVOKABLE void cancel() override;

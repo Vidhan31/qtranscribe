@@ -8,7 +8,7 @@ import "controls"
 Item {
     id: root
 
-    signal openSettingsRequested(int categoryIndex)
+    signal navigateRequested(var target)
 
     implicitWidth: 620
     implicitHeight: 540
@@ -21,13 +21,6 @@ Item {
         repeat: false
         onTriggered: {
             root.showCopySuccess = false;
-        }
-    }
-
-    Connections {
-        target: SpeechController
-        function onOpenSettingsRequested(categoryIndex: int) {
-            root.openSettingsRequested(categoryIndex);
         }
     }
 
@@ -64,18 +57,97 @@ Item {
             }
 
             StatusBanner {
-                visible: SpeechController.hasActiveNotice
-                bannerType: SpeechController.activeNotice.type || "info"
-                title: SpeechController.activeNotice.title || ""
-                message: SpeechController.activeNotice.message || ""
-                actionText: SpeechController.activeNotice.actionText || ""
-                onActionClicked: {
-                    SpeechController.triggerNoticeAction(SpeechController.activeNotice.actionId);
-                }
-                secondaryActionText: SpeechController.activeNotice.secondaryActionText || ""
-                onSecondaryActionClicked: {
-                    SpeechController.triggerNoticeAction(SpeechController.activeNotice.secondaryActionId);
-                }
+                visible: SpeechController.activeBackend === SpeechController.TranscriptionBackend.Groq &&
+                         !GroqApiClient.apiKeySet
+                bannerType: "warning"
+                title: qsTr("Groq API Key Required")
+                message: qsTr("Configure your API key in Settings to begin speech transcription.")
+                actionText: qsTr("Configure API Key")
+                onActionClicked: root.navigateRequested("apiKey")
+            }
+
+            StatusBanner {
+                visible: SpeechController.activeBackend === SpeechController.TranscriptionBackend.Groq
+                         && GroqApiClient.apiKeySet && GroqSttClient.errorCategory
+                         === GroqSttClient.ErrorCategory.InvalidApiKey
+                bannerType: "warning"
+                title: qsTr("Invalid API Key")
+                message: GroqSttClient.lastError.length > 0 ? GroqSttClient.lastError : qsTr(
+                                                                  "Authentication failed. Please verify your Groq API key.")
+                actionText: qsTr("Configure API Key")
+                onActionClicked: root.navigateRequested("apiKey")
+                secondaryActionText: qsTr("Dismiss")
+                onSecondaryActionClicked: SpeechController.clearError()
+            }
+
+            StatusBanner {
+                visible: SpeechController.activeBackend === SpeechController.TranscriptionBackend.Groq
+                         && GroqSttClient.errorCategory === GroqSttClient.ErrorCategory.RateLimited
+                         && GroqSttClient.retrySecondsRemaining > 0
+                bannerType: "warning"
+                title: qsTr("Rate Limit Exceeded")
+                message: qsTr("Auto-retrying in %1s…").arg(GroqSttClient.retrySecondsRemaining)
+                actionText: qsTr("Dismiss")
+                onActionClicked: SpeechController.clearError()
+            }
+
+            StatusBanner {
+                visible: SpeechController.activeBackend === SpeechController.TranscriptionBackend.WhisperCpp &&
+                         !WhisperSttClient.isModelInstalled
+                bannerType: "warning"
+                title: qsTr("Offline Whisper Model Missing")
+                message: qsTr("Download %1 to start offline transcription.").arg(WhisperSttClient.modelFileName)
+                actionText: qsTr("Offline Settings")
+                onActionClicked: root.navigateRequested("offline")
+            }
+
+            StatusBanner {
+                visible: SpeechController.activeBackend === SpeechController.TranscriptionBackend.WhisperCpp
+                         && WhisperSttClient.isModelInstalled && !WhisperSttClient.isModelLoaded
+                bannerType: "info"
+                title: qsTr("Loading Whisper Model")
+                message: qsTr("Loading offline speech recognition model into memory…")
+                actionText: qsTr("Offline Settings")
+                onActionClicked: root.navigateRequested("offline")
+            }
+
+            StatusBanner {
+                visible: !AudioRecorder.hasAudioInputDevice
+                bannerType: "warning"
+                title: qsTr("No Microphone Detected")
+                message: qsTr("Please connect a microphone or check your audio permissions in system settings.")
+                actionText: qsTr("Audio Settings")
+                onActionClicked: root.navigateRequested("dictation")
+            }
+
+            StatusBanner {
+                visible: TextInjectorClient.hasFatalError
+                bannerType: "danger"
+                title: qsTr("Direct Typing Service Stopped")
+                message: TextInjectorClient.fatalErrorMessage.length > 0 ? TextInjectorClient.fatalErrorMessage : qsTr(
+                                                                               "The background key injection daemon encountered an error. Text will fallback to clipboard paste until restarted.")
+                actionText: qsTr("Restart Service")
+                onActionClicked: TextInjectorClient.restartService()
+                secondaryActionText: qsTr("Settings")
+                onSecondaryActionClicked: root.navigateRequested("system")
+            }
+
+            StatusBanner {
+                visible: SpeechController.dictationState === SpeechController.DictationState.Error && (
+                             SpeechController.activeBackend !== SpeechController.TranscriptionBackend.Groq || (
+                                 GroqSttClient.errorCategory !== GroqSttClient.ErrorCategory.InvalidApiKey && (
+                                     GroqSttClient.errorCategory !== GroqSttClient.ErrorCategory.RateLimited
+                                     || GroqSttClient.retrySecondsRemaining === 0)))
+                bannerType: "danger"
+                title: SpeechController.activeBackend === SpeechController.TranscriptionBackend.WhisperCpp ? qsTr(
+                                                                                                                 "Offline Transcription Failed") :
+                                                                                                             qsTr("Transcription Failed")
+                message: SpeechController.lastError.length > 0 ? SpeechController.lastError : qsTr(
+                                                                     "An error occurred during transcription.")
+                actionText: qsTr("Retry Transcription")
+                onActionClicked: SpeechController.retryTranscription()
+                secondaryActionText: qsTr("Dismiss")
+                onSecondaryActionClicked: SpeechController.clearError()
             }
 
             StyledCard {

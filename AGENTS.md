@@ -7,6 +7,7 @@
 - Prefer declarative style over imperative.
 - No premature optimizations.
 - Keep styling configuration centralized.
+- No steps, obvious, decoration banner comments.
 
 ## Execution & Safety
 - Do not run destructive commands (e.g., `rm -rf`, `dnf remove`) unless explicitly instructed.

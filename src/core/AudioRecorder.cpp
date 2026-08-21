@@ -38,7 +38,7 @@ AudioRecorder::AudioRecorder(QObject* parent)
 
 AudioRecorder::~AudioRecorder() {
     if (m_recording) {
-        stopRecording();
+        cancelRecording();
     }
 }
 
@@ -135,7 +135,7 @@ void AudioRecorder::startRecording() {
     setRecording(true);
     setAudioLevel(0.0);
     setStatusMessage(u"Recording…"_s);
-    m_maxDurationTimer->start(kMaxRecordingDurationMs);
+    m_maxDurationTimer->start(kMaxRecordingDuration);
     qCDebug(lcAudio) << "Recording started successfully (5m safety ceiling active)";
 }
 
@@ -186,6 +186,29 @@ void AudioRecorder::stopRecording() {
     emit recordingFinished(wavData);
 }
 
+void AudioRecorder::cancelRecording() {
+    if (!m_recording) {
+        return;
+    }
+
+    m_maxDurationTimer->stop();
+    qCDebug(lcAudio) << "Cancelling audio recording...";
+
+    if (m_source) {
+        m_source->stop();
+        delete m_source;
+        m_source = nullptr;
+    }
+    m_ioDevice = nullptr;
+
+    m_pcmData.clear();
+    m_pcmData.squeeze();
+
+    setRecording(false);
+    setAudioLevel(0.0);
+    setStatusMessage(u"Recording cancelled"_s);
+}
+
 void AudioRecorder::onReadyRead() {
     if (!m_ioDevice) {
         return;
@@ -229,7 +252,7 @@ void AudioRecorder::onReadyRead() {
                 sumSquares += val * val;
             }
         }
-    } else { // Default Int16
+    } else {
         sampleCount = chunk.size() / sizeof(qint16);
         if (sampleCount > 0) {
             const auto* samples = reinterpret_cast<const qint16*>(chunk.constData());

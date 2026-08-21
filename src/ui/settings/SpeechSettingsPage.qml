@@ -401,7 +401,7 @@ Item {
                         variant: AudioRecorder.recording ? "danger" : "secondary"
                         onClicked: {
                             if (AudioRecorder.recording) {
-                                AudioRecorder.stopRecording();
+                                AudioRecorder.cancelRecording();
                             } else {
                                 AudioRecorder.startRecording();
                             }

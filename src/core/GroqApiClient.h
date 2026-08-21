@@ -10,7 +10,6 @@
 #include <QNetworkRequestFactory>
 #include <QObject>
 #include <QQmlEngine>
-#include <QRestAccessManager>
 #include <QString>
 #include <QUrl>
 #include <qt6keychain/keychain.h>
@@ -37,7 +36,6 @@ public:
     bool apiKeySet() const;
 
     QNetworkAccessManager* networkAccessManager();
-    QRestAccessManager* restAccessManager();
     const QNetworkRequestFactory& requestFactory() const;
 
     QNetworkRequest createApiRequest(const QString& relativePath, const QString& contentType = QString()) const;
@@ -49,8 +47,8 @@ public:
 
     static QString userAgent();
 
-    static constexpr std::chrono::seconds kDefaultTransferTimeout {15};
-    static constexpr const char* kApiBaseUrl = "https://api.groq.com/openai/v1";
+    static constexpr auto kDefaultTransferTimeout = std::chrono::seconds(15);
+    inline static constexpr QStringView kApiBaseUrl = u"https://api.groq.com/openai/v1";
 
 signals:
     void apiKeyChanged();
@@ -65,10 +63,9 @@ private:
     void deleteApiKeyFromKeychain();
 
     QNetworkAccessManager* m_nam = nullptr;
-    QRestAccessManager* m_restMgr = nullptr;
     QNetworkRequestFactory m_requestFactory;
     QString m_apiKey;
 
-    static constexpr const char* kKeychainService = "QTranscribe";
-    static constexpr const char* kKeychainKey = "groq_api_key";
+    inline static constexpr QStringView kKeychainService = u"QTranscribe";
+    inline static constexpr QStringView kKeychainKey = u"groq_api_key";
 };

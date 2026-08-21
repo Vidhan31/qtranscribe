@@ -19,9 +19,20 @@ ApplicationWindow {
 
     property int activeNavIndex: 0
 
-    function navigateToSection(index: int) {
-        if (index >= 0 && index < navModel.count) {
-            root.activeNavIndex = index;
+    function navigateToSection(target: var) {
+        if (typeof target === "number") {
+            if (target >= 0 && target < navModel.count) {
+                root.activeNavIndex = target;
+            }
+            return;
+        }
+        if (typeof target === "string") {
+            for (let i = 0; i < navModel.count; ++i) {
+                if (navModel.get(i).sectionId === target) {
+                    root.activeNavIndex = i;
+                    return;
+                }
+            }
         }
     }
 
@@ -83,18 +94,21 @@ ApplicationWindow {
             title: "Dictate"
             iconSource: "qrc:/qt/qml/QTranscribe/assets/icons/mic.svg"
             navIndex: 0
+            sectionId: "dictate"
         }
         ListElement {
             section: "MAIN"
             title: "History"
             iconSource: "qrc:/qt/qml/QTranscribe/assets/icons/history.svg"
             navIndex: 1
+            sectionId: "history"
         }
         ListElement {
             section: "MAIN"
             title: "Activity"
             iconSource: "qrc:/qt/qml/QTranscribe/assets/icons/activity.svg"
             navIndex: 2
+            sectionId: "activity"
         }
 
         ListElement {
@@ -102,30 +116,35 @@ ApplicationWindow {
             title: "API Key"
             iconSource: "qrc:/qt/qml/QTranscribe/assets/icons/key.svg"
             navIndex: 3
+            sectionId: "apiKey"
         }
         ListElement {
             section: "PREFERENCES"
             title: "Dictation"
             iconSource: "qrc:/qt/qml/QTranscribe/assets/icons/speech.svg"
             navIndex: 4
+            sectionId: "dictation"
         }
         ListElement {
             section: "PREFERENCES"
             title: "Offline Dictation"
             iconSource: "qrc:/qt/qml/QTranscribe/assets/icons/bolt.svg"
             navIndex: 5
+            sectionId: "offline"
         }
         ListElement {
             section: "PREFERENCES"
             title: "Text Enhancement"
             iconSource: "qrc:/qt/qml/QTranscribe/assets/icons/sparkles.svg"
             navIndex: 6
+            sectionId: "enhancement"
         }
         ListElement {
             section: "PREFERENCES"
             title: "System & Typing"
             iconSource: "qrc:/qt/qml/QTranscribe/assets/icons/keyboard.svg"
             navIndex: 7
+            sectionId: "system"
         }
 
         ListElement {
@@ -133,12 +152,14 @@ ApplicationWindow {
             title: "About"
             iconSource: "qrc:/qt/qml/QTranscribe/assets/icons/info.svg"
             navIndex: 8
+            sectionId: "about"
         }
         ListElement {
             section: "INFO"
             title: "License"
             iconSource: "qrc:/qt/qml/QTranscribe/assets/icons/license.svg"
             navIndex: 9
+            sectionId: "license"
         }
     }
 
@@ -280,8 +301,8 @@ ApplicationWindow {
                 SpeechPanel {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    onOpenSettingsRequested: categoryIndex => {
-                        root.navigateToSection(3 + (categoryIndex !== undefined ? categoryIndex : 0));
+                    onNavigateRequested: target => {
+                        root.navigateToSection(target);
                     }
                 }
 
@@ -293,8 +314,8 @@ ApplicationWindow {
                 UsageView {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    onOpenSettingsRequested: {
-                        root.navigateToSection(3);
+                    onNavigateRequested: target => {
+                        root.navigateToSection(target);
                     }
                 }
 

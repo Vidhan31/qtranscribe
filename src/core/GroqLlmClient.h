@@ -1,17 +1,20 @@
 #pragma once
 
-#include "ApiRequestHandler.h"
+#include "HttpRequestRunner.h"
 
+#include <QObject>
 #include <QQmlEngine>
 #include <QString>
 
 class GroqApiClient;
+class QTimer;
 
-class GroqLlmClient : public ApiRequestHandler {
+class GroqLlmClient : public QObject {
     Q_OBJECT
     QML_ELEMENT
     QML_SINGLETON
 
+    Q_PROPERTY(bool busy READ isBusy NOTIFY busyChanged FINAL)
     Q_PROPERTY(bool enabled READ enabled WRITE setEnabled NOTIFY enabledChanged FINAL)
     Q_PROPERTY(QString lastError READ lastError NOTIFY lastErrorChanged FINAL)
     Q_PROPERTY(QString selectedModel READ selectedModel WRITE setSelectedModel NOTIFY selectedModelChanged FINAL)
@@ -25,6 +28,9 @@ public:
 
     void setApiClient(GroqApiClient* apiClient);
     GroqApiClient* apiClient() const;
+
+    bool isBusy() const;
+    bool isCancelled() const;
 
     bool enabled() const;
     void setEnabled(bool enabled);
@@ -45,9 +51,10 @@ public:
 
     Q_INVOKABLE QString systemPromptForPreset(const QString& preset) const;
     Q_INVOKABLE void processText(const QString& rawText);
-    Q_INVOKABLE void cancel() override;
+    Q_INVOKABLE void cancel();
 
 signals:
+    void busyChanged();
     void enabledChanged();
     void lastErrorChanged();
     void selectedModelChanged();
@@ -59,12 +66,15 @@ signals:
     void errorOccurred(const QString& error, const QString& fallbackRawText);
 
 private:
+    void setBusy(bool busy);
     void setLastError(const QString& error);
     void sendProcessRequest();
     void handleProcessResponse(const GroqApiResponse& res);
     QString currentSystemPrompt() const;
 
     GroqApiClient* m_apiClient = nullptr;
+    QTimer* m_retryTimer = nullptr;
+    HttpRequestRunner m_requestRunner;
     QString m_lastError;
     QString m_selectedModel;
     QString m_activePreset;
@@ -73,5 +83,5 @@ private:
     double m_temperature = 0.1;
     bool m_enabled = false;
 
-    static constexpr const char* kDefaultModel = "openai/gpt-oss-20b";
+    inline static constexpr QStringView kDefaultModel = u"openai/gpt-oss-20b";
 };
