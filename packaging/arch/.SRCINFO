@@ -1,6 +1,6 @@
 pkgbase = qtranscribe
 	pkgdesc = Fast and modern speech-to-text desktop application
-	pkgver = 1.0.0
+	pkgver = 1.1.0
 	pkgrel = 1
 	url = https://github.com/Vidhan31/qtranscribe
 	install = qtranscribe.install
@@ -12,6 +12,8 @@ pkgbase = qtranscribe
 	makedepends = gcc
 	makedepends = wayland-protocols
 	makedepends = pkgconf
+	makedepends = vulkan-headers
+	makedepends = shaderc
 	depends = qt6-base
 	depends = qt6-declarative
 	depends = qt6-multimedia
@@ -22,8 +24,9 @@ pkgbase = qtranscribe
 	depends = libcap
 	depends = wayland
 	depends = wl-clipboard
+	depends = vulkan-icd-loader
 	depends = hicolor-icon-theme
-	source = qtranscribe-1.0.0.tar.gz::https://github.com/Vidhan31/qtranscribe/archive/v1.0.0.tar.gz
+	source = qtranscribe-1.1.0.tar.gz::https://github.com/Vidhan31/qtranscribe/archive/v1.1.0.tar.gz
 	sha256sums = SKIP
 
 pkgname = qtranscribe
