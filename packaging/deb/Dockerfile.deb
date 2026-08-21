@@ -101,6 +101,7 @@ RUN cmake -S /build/src-tree -B /build/build -G Ninja \
         -DFETCHCONTENT_SOURCE_DIR_WHISPER=/opt/whisper-src \
         ${APP_VERSION:+-DQTRANSCRIBE_VERSION=${APP_VERSION}} && \
     cmake --build /build/build && \
+    QT_QPA_PLATFORM=offscreen ctest --test-dir /build/build --output-on-failure && \
     cpack -G DEB
 
 # ---------------------------------------------------------------------------

@@ -59,6 +59,7 @@ and seamless desktop integration on Wayland environments (Plasma 6+, GNOME 49+).
 
 %check
 desktop-file-validate %{buildroot}%{_datadir}/applications/io.github.qtranscribe.desktop
+QT_QPA_PLATFORM=offscreen %ctest
 
 %files
 %license LICENSE

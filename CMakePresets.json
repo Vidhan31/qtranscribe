@@ -58,5 +58,40 @@
             "name": "build-relwithdebinfo",
             "configurePreset": "linux-qt6-relwithdebinfo"
         }
+    ],
+    "testPresets": [
+        {
+            "name": "test-debug",
+            "displayName": "Test (Debug)",
+            "configurePreset": "linux-qt6-debug",
+            "output": {
+                "outputOnFailure": true
+            },
+            "environment": {
+                "QT_QPA_PLATFORM": "offscreen"
+            }
+        },
+        {
+            "name": "test-release",
+            "displayName": "Test (Release)",
+            "configurePreset": "linux-qt6-release",
+            "output": {
+                "outputOnFailure": true
+            },
+            "environment": {
+                "QT_QPA_PLATFORM": "offscreen"
+            }
+        },
+        {
+            "name": "test-relwithdebinfo",
+            "displayName": "Test (RelWithDebInfo)",
+            "configurePreset": "linux-qt6-relwithdebinfo",
+            "output": {
+                "outputOnFailure": true
+            },
+            "environment": {
+                "QT_QPA_PLATFORM": "offscreen"
+            }
+        }
     ]
 }

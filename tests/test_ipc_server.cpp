@@ -54,7 +54,7 @@ private slots:
     void testValidPasteCommand() {
         QTemporaryDir tempDir;
         QVERIFY(tempDir.isValid());
-        std::string sockPath = (tempDir.path() + "/test_ipc.sock").toStdString();
+        std::string sockPath = tempDir.filePath(QStringLiteral("test_ipc.sock")).toStdString();
 
         MockDevice mockDevice;
         keyinjectord::IpcServer server(sockPath, mockDevice);
@@ -82,7 +82,7 @@ private slots:
     void testPingCommand() {
         QTemporaryDir tempDir;
         QVERIFY(tempDir.isValid());
-        std::string sockPath = (tempDir.path() + "/test_ipc_ping.sock").toStdString();
+        std::string sockPath = tempDir.filePath(QStringLiteral("test_ipc_ping.sock")).toStdString();
 
         MockDevice mockDevice;
         keyinjectord::IpcServer server(sockPath, mockDevice);
@@ -111,7 +111,7 @@ private slots:
     void testDeviceErrorResponse() {
         QTemporaryDir tempDir;
         QVERIFY(tempDir.isValid());
-        std::string sockPath = (tempDir.path() + "/test_ipc_error.sock").toStdString();
+        std::string sockPath = tempDir.filePath(QStringLiteral("test_ipc_error.sock")).toStdString();
 
         class FailingMockDevice : public keyinjectord::IDevice {
         public:
@@ -141,7 +141,7 @@ private slots:
     void testUnknownOpcodeDisconnect() {
         QTemporaryDir tempDir;
         QVERIFY(tempDir.isValid());
-        std::string sockPath = (tempDir.path() + "/test_ipc_unknown.sock").toStdString();
+        std::string sockPath = tempDir.filePath(QStringLiteral("test_ipc_unknown.sock")).toStdString();
 
         MockDevice mockDevice;
         keyinjectord::IpcServer server(sockPath, mockDevice);
@@ -169,7 +169,7 @@ private slots:
     void testMaxClientsLimit() {
         QTemporaryDir tempDir;
         QVERIFY(tempDir.isValid());
-        std::string sockPath = (tempDir.path() + "/test_ipc_max_clients.sock").toStdString();
+        std::string sockPath = tempDir.filePath(QStringLiteral("test_ipc_max_clients.sock")).toStdString();
 
         MockDevice mockDevice;
         keyinjectord::IpcServer server(sockPath, mockDevice);
@@ -207,5 +207,5 @@ private slots:
     }
 };
 
-QTEST_MAIN(TestIpcServer)
+QTEST_GUILESS_MAIN(TestIpcServer)
 #include "test_ipc_server.moc"

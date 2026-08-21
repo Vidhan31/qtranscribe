@@ -152,5 +152,5 @@ private slots:
     }
 };
 
-QTEST_MAIN(TestHttpRequestRunner)
+QTEST_GUILESS_MAIN(TestHttpRequestRunner)
 #include "test_http_request_runner.moc"

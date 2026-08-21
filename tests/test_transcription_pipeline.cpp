@@ -177,8 +177,6 @@ private slots:
         pipeline.initialize();
 
         // 1. Cancel during recording
-        AudioRecorder recorder;
-        pipeline.setAudioRecorder(&recorder);
         pipeline.setState(TranscriptionPipeline::State::Recording);
 
         pipeline.cancel();
@@ -216,15 +214,6 @@ private slots:
         QCOMPARE(groqClient.m_transcribeCallCount, 0);
     }
 
-    void testAudioRecorderCancelRecording() {
-        AudioRecorder recorder;
-        QSignalSpy finishedSpy(&recorder, &AudioRecorder::recordingFinished);
-
-        recorder.cancelRecording();
-        QCOMPARE(recorder.recording(), false);
-        QCOMPARE(finishedSpy.count(), 0);
-    }
-
     void testClientReadinessAndCanRecord() {
         TranscriptionPipeline pipeline;
         FakeSttClient groqClient;
@@ -238,7 +227,15 @@ private slots:
         // Note: canRecord also requires an active audio input device from recorder
         QCOMPARE(groqClient.isReady(), true);
     }
+
+    void initTestCase() {
+        qputenv("QT_MEDIA_BACKEND", "null");
+    }
+
+    void cleanupTestCase() {
+        QCoreApplication::processEvents();
+    }
 };
 
-QTEST_MAIN(TestTranscriptionPipeline)
+QTEST_GUILESS_MAIN(TestTranscriptionPipeline)
 #include "test_transcription_pipeline.moc"

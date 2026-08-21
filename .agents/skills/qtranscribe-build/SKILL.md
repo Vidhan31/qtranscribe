@@ -22,11 +22,11 @@ Build procedures and commands for compiling the Qt 6 GUI application and keyinje
 
 ## Build Reference Table
 
-| Target | Operation | Build Dir | Build Command | Post-Build User Action |
+| Target | Operation | Build Dir | Build & Verify Command | Post-Build User Action |
 | :--- | :--- | :--- | :--- | :--- |
-| **Qt GUI** | Clean Debug | `build/` | `rm -rf build && cmake --preset linux-qt6-debug && cmake --build build` | None |
-| **Qt GUI** | Incremental | `build/` | `cmake --build build` | None |
-| **Qt GUI** | Clean Release | `build-release/` | `rm -rf build-release && cmake --preset linux-qt6-release -DBUILD_KEYINJECTORD=OFF && cmake --build build-release` | None |
+| **Qt GUI** | Clean Debug | `build/` | `rm -rf build && cmake --preset linux-qt6-debug && cmake --build build && ctest --preset test-debug` | None |
+| **Qt GUI** | Incremental | `build/` | `cmake --build build && ctest --preset test-debug` | None |
+| **Qt GUI** | Clean Release | `build-release/` | `rm -rf build-release && cmake --preset linux-qt6-release -DBUILD_KEYINJECTORD=OFF && cmake --build build-release && ctest --preset test-release` | None |
 | **keyinjectord** | Clean Debug | `build-keyinjectord/` | `rm -rf build-keyinjectord && cmake -S src/keyinjectord --preset keyinjectord-debug && cmake --build build-keyinjectord` | User runs: `sudo setcap "cap_dac_override+p" build-keyinjectord/keyinjectord` |
 | **keyinjectord** | Incremental | `build-keyinjectord/` | `cmake --build build-keyinjectord` | If re-linked, user runs: `sudo setcap "cap_dac_override+p" build-keyinjectord/keyinjectord` |
 | **keyinjectord** | Clean Release | `build-keyinjectord-release/` | `rm -rf build-keyinjectord-release && cmake -S src/keyinjectord --preset keyinjectord-release && cmake --build build-keyinjectord-release` | User runs: `sudo setcap "cap_dac_override+p" build-keyinjectord-release/keyinjectord` |
