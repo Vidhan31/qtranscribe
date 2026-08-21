@@ -233,7 +233,8 @@ void DaemonConnector::onErrorOccurred(QLocalSocket::LocalSocketError error) {
 }
 
 void DaemonConnector::onReadyRead() {
-    QByteArray data = m_socket->readAll();
+    constexpr qint64 kMaxResponseReadSize = 1024;
+    QByteArray data = m_socket->read(kMaxResponseReadSize);
     QString response = QString::fromUtf8(data).trimmed();
     if (!response.isEmpty()) {
         setStatusMessage(u"Response: %1"_s.arg(response));
