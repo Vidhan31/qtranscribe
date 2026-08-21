@@ -114,4 +114,3 @@ add_test(
     NAME IpcServerTest
     COMMAND test_ipc_server
 )
-
