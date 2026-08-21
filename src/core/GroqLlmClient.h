@@ -7,6 +7,7 @@
 #include <QString>
 
 class GroqApiClient;
+class QTimer;
 
 class GroqLlmClient : public QObject {
     Q_OBJECT
@@ -72,6 +73,7 @@ private:
     QString currentSystemPrompt() const;
 
     GroqApiClient* m_apiClient = nullptr;
+    QTimer* m_retryTimer = nullptr;
     HttpRequestRunner m_requestRunner;
     QString m_lastError;
     QString m_selectedModel;

@@ -15,7 +15,8 @@ using namespace Qt::StringLiterals;
 using namespace std::chrono_literals;
 
 GroqLlmClient::GroqLlmClient(QObject* parent)
-    : QObject(parent) {
+    : QObject(parent)
+    , m_retryTimer(new QTimer(this)) {
     QSettings settings;
     m_enabled = settings.value(u"Groq/LlmEnabled"_s, false).toBool();
     m_selectedModel = settings.value(u"Groq/LlmModel"_s, kDefaultModel.toString()).toString();
@@ -28,6 +29,13 @@ GroqLlmClient::GroqLlmClient(QObject* parent)
     }
     m_customPrompt = settings.value(u"Groq/LlmCustomPrompt"_s, QString()).toString();
     m_temperature = settings.value(u"Groq/LlmTemperature"_s, 0.1).toDouble();
+
+    m_retryTimer->setSingleShot(true);
+    connect(m_retryTimer, &QTimer::timeout, this, [this]() {
+        if (!m_requestRunner.isCancelled() && !m_pendingRawText.isEmpty()) {
+            sendProcessRequest();
+        }
+    });
 }
 
 void GroqLlmClient::setApiClient(GroqApiClient* apiClient) {
@@ -157,6 +165,9 @@ QString GroqLlmClient::currentSystemPrompt() const {
 
 void GroqLlmClient::cancel() {
     const bool wasBusy = m_requestRunner.isBusy();
+    if (m_retryTimer) {
+        m_retryTimer->stop();
+    }
     m_requestRunner.cancel();
     m_pendingRawText.clear();
     if (wasBusy) {
@@ -185,6 +196,9 @@ void GroqLlmClient::processText(const QString& rawText) {
         return;
     }
 
+    if (m_retryTimer) {
+        m_retryTimer->stop();
+    }
     m_requestRunner.prepareNewRequest();
     m_pendingRawText = rawText;
 
@@ -241,6 +255,9 @@ void GroqLlmClient::handleProcessResponse(const GroqApiResponse& res) {
 
     if (m_requestRunner.isCancelled() || res.networkError == QNetworkReply::OperationCanceledError) {
         qCDebug(lcLLM) << "GroqLlmClient: Request cancelled/aborted, ignoring response";
+        if (m_retryTimer) {
+            m_retryTimer->stop();
+        }
         setBusy(false);
         return;
     }
@@ -252,15 +269,16 @@ void GroqLlmClient::handleProcessResponse(const GroqApiResponse& res) {
             qCDebug(lcLLM) << "GroqLlmClient: Transient error encountered (Status:" << res.httpStatus
                            << "Error:" << res.networkError << "). Scheduling retry in" << delayMs << "ms (Attempt"
                            << m_requestRunner.retryCount() << "/" << m_requestRunner.policy().maxRetries << ")";
-            QTimer::singleShot(std::chrono::milliseconds(delayMs), this, [this]() {
-                if (!m_requestRunner.isCancelled() && !m_pendingRawText.isEmpty()) {
-                    sendProcessRequest();
-                }
-            });
+            if (m_retryTimer) {
+                m_retryTimer->start(delayMs);
+            }
             return;
         }
 
         const QString rawFallback = m_pendingRawText;
+        if (m_retryTimer) {
+            m_retryTimer->stop();
+        }
         m_requestRunner.reset();
         m_pendingRawText.clear();
         setBusy(false);
@@ -272,8 +290,11 @@ void GroqLlmClient::handleProcessResponse(const GroqApiResponse& res) {
         return;
     }
 
-    m_requestRunner.reset();
     const QString rawFallback = m_pendingRawText;
+    if (m_retryTimer) {
+        m_retryTimer->stop();
+    }
+    m_requestRunner.reset();
     m_pendingRawText.clear();
     setBusy(false);
 

@@ -79,6 +79,7 @@ private:
 
     GroqApiClient* m_apiClient = nullptr;
     QTimer* m_retryCountdownTimer = nullptr;
+    QTimer* m_retryTimer = nullptr;
     HttpRequestRunner m_requestRunner;
     QByteArray m_lastWavData;
     QString m_lastFilename;

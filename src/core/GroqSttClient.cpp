@@ -13,7 +13,8 @@ using namespace std::chrono_literals;
 
 GroqSttClient::GroqSttClient(QObject* parent)
     : AbstractSttClient(parent)
-    , m_retryCountdownTimer(new QTimer(this)) {
+    , m_retryCountdownTimer(new QTimer(this))
+    , m_retryTimer(new QTimer(this)) {
     QSettings settings;
     m_selectedModel = settings.value(u"Groq/Model"_s, kDefaultModel.toString()).toString();
     if (m_selectedModel.isEmpty() ||
@@ -29,6 +30,13 @@ GroqSttClient::GroqSttClient(QObject* parent)
             setRetrySecondsRemaining(m_retrySecondsRemaining - 1);
         } else {
             m_retryCountdownTimer->stop();
+        }
+    });
+
+    m_retryTimer->setSingleShot(true);
+    connect(m_retryTimer, &QTimer::timeout, this, [this]() {
+        if (!m_requestRunner.isCancelled() && !m_lastWavData.isEmpty()) {
+            sendTranscribeRequest();
         }
     });
 }
@@ -154,6 +162,9 @@ void GroqSttClient::setCustomPrompt(const QString& prompt) {
 
 void GroqSttClient::cancel() {
     const bool wasBusy = m_requestRunner.isBusy();
+    if (m_retryTimer) {
+        m_retryTimer->stop();
+    }
     m_requestRunner.cancel();
     m_retryCountdownTimer->stop();
     setRetrySecondsRemaining(0);
@@ -166,6 +177,9 @@ void GroqSttClient::cancel() {
 
 void GroqSttClient::retryLast() {
     if (!m_lastWavData.isEmpty() && !isBusy()) {
+        if (m_retryTimer) {
+            m_retryTimer->stop();
+        }
         m_requestRunner.prepareNewRequest();
         sendTranscribeRequest();
     }
@@ -196,6 +210,9 @@ void GroqSttClient::transcribe(const QByteArray& wavData, const QString& filenam
         return;
     }
 
+    if (m_retryTimer) {
+        m_retryTimer->stop();
+    }
     m_requestRunner.prepareNewRequest();
     m_lastWavData = wavData;
     m_lastFilename = filename;
@@ -292,6 +309,9 @@ void GroqSttClient::handleTranscribeResponse(const GroqApiResponse& res) {
 
     if (m_requestRunner.isCancelled() || res.networkError == QNetworkReply::OperationCanceledError) {
         qCDebug(lcNetwork) << "GroqSttClient: Request cancelled/aborted, ignoring response";
+        if (m_retryTimer) {
+            m_retryTimer->stop();
+        }
         setBusy(false);
         return;
     }
@@ -303,14 +323,15 @@ void GroqSttClient::handleTranscribeResponse(const GroqApiResponse& res) {
             qCDebug(lcNetwork) << "GroqSttClient: Transient error encountered (Status:" << res.httpStatus
                                << "Error:" << res.networkError << "). Scheduling retry in" << delayMs << "ms (Attempt"
                                << m_requestRunner.retryCount() << "/" << m_requestRunner.policy().maxRetries << ")";
-            QTimer::singleShot(std::chrono::milliseconds(delayMs), this, [this]() {
-                if (!m_requestRunner.isCancelled() && !m_lastWavData.isEmpty()) {
-                    sendTranscribeRequest();
-                }
-            });
+            if (m_retryTimer) {
+                m_retryTimer->start(delayMs);
+            }
             return;
         }
 
+        if (m_retryTimer) {
+            m_retryTimer->stop();
+        }
         m_requestRunner.reset();
         setBusy(false);
 
@@ -329,6 +350,9 @@ void GroqSttClient::handleTranscribeResponse(const GroqApiResponse& res) {
         return;
     }
 
+    if (m_retryTimer) {
+        m_retryTimer->stop();
+    }
     m_requestRunner.reset();
     m_lastWavData.clear();
     m_lastFilename.clear();
