@@ -1,4 +1,4 @@
-                            ---
+---
 name: qtranscribe-build
 description: >-
   Workflows and commands for building QTranscribe components separately
