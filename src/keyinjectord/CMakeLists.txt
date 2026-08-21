@@ -25,6 +25,7 @@ add_executable(keyinjectord
     ipc_server.cpp
     device_interface.h
     logging.h
+    protocol.h
 )
 
 target_link_libraries(keyinjectord PRIVATE

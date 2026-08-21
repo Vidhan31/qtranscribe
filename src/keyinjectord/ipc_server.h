@@ -1,6 +1,7 @@
 #pragma once
 
 #include "device_interface.h"
+#include "protocol.h"
 
 #include <cstddef>
 #include <string>
@@ -26,7 +27,6 @@ public:
 
 private:
     void handleClient(int clientIdx);
-    void processMessage(const std::string& message);
     void disconnectClient(size_t clientIdx);
 
     std::string m_socketPath;
@@ -36,7 +36,6 @@ private:
     int m_stopEventFd = -1;
 
     std::vector<int> m_clientFds;
-    std::vector<std::string> m_clientBuffers;
     std::vector<struct pollfd> m_pollFds;
 };
 
