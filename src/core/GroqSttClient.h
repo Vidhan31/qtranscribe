@@ -51,8 +51,6 @@ public:
 
     void activate() override;
     void deactivate() override;
-    bool hasNotice() const override;
-    QVariantMap notice() const override;
 
     Q_INVOKABLE void transcribe(const QByteArray& wavData) override;
     Q_INVOKABLE void transcribe(const QByteArray& wavData, const QString& filename);

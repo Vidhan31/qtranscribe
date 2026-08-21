@@ -53,67 +53,14 @@ GroqApiClient* GroqSttClient::apiClient() const {
 
 void GroqSttClient::onApiKeySetChanged() {
     emit readyChanged();
-    emit noticeChanged();
 }
 
 void GroqSttClient::activate() {
     emit readyChanged();
-    emit noticeChanged();
 }
 
 void GroqSttClient::deactivate() {
     cancel();
-}
-
-bool GroqSttClient::hasNotice() const {
-    if (!m_apiClient || !m_apiClient->apiKeySet()) {
-        return true;
-    }
-    if (m_errorCategory == ErrorCategory::RateLimited && m_retrySecondsRemaining > 0) {
-        return true;
-    }
-    if (m_errorCategory == ErrorCategory::InvalidApiKey) {
-        return true;
-    }
-    return false;
-}
-
-QVariantMap GroqSttClient::notice() const {
-    QVariantMap noticeMap;
-    if (!m_apiClient || !m_apiClient->apiKeySet()) {
-        noticeMap[u"hasNotice"_s] = true;
-        noticeMap[u"type"_s] = u"warning"_s;
-        noticeMap[u"title"_s] = tr("Groq API Key Required");
-        noticeMap[u"message"_s] = tr("Configure your API key in Settings to begin speech transcription.");
-        noticeMap[u"actionText"_s] = tr("Configure API Key");
-        noticeMap[u"actionId"_s] = u"openApiKeySettings"_s;
-        return noticeMap;
-    }
-
-    if (m_errorCategory == ErrorCategory::RateLimited && m_retrySecondsRemaining > 0) {
-        noticeMap[u"hasNotice"_s] = true;
-        noticeMap[u"type"_s] = u"warning"_s;
-        noticeMap[u"title"_s] = tr("Rate Limit Exceeded");
-        noticeMap[u"message"_s] = tr("Auto-retrying in %1s…").arg(m_retrySecondsRemaining);
-        noticeMap[u"actionText"_s] = tr("Dismiss");
-        noticeMap[u"actionId"_s] = u"dismissError"_s;
-        return noticeMap;
-    }
-
-    if (m_errorCategory == ErrorCategory::InvalidApiKey) {
-        noticeMap[u"hasNotice"_s] = true;
-        noticeMap[u"type"_s] = u"warning"_s;
-        noticeMap[u"title"_s] = tr("Invalid API Key");
-        noticeMap[u"message"_s] =
-            m_lastError.isEmpty() ? tr("Authentication failed. Please verify your Groq API key.") : m_lastError;
-        noticeMap[u"actionText"_s] = tr("Configure API Key");
-        noticeMap[u"actionId"_s] = u"openApiKeySettings"_s;
-        noticeMap[u"secondaryActionText"_s] = tr("Dismiss");
-        noticeMap[u"secondaryActionId"_s] = u"dismissError"_s;
-        return noticeMap;
-    }
-
-    return noticeMap;
 }
 
 bool GroqSttClient::isReady() const {
@@ -151,7 +98,6 @@ void GroqSttClient::setErrorCategory(ErrorCategory category) {
     if (m_errorCategory != category) {
         m_errorCategory = category;
         emit errorCategoryChanged();
-        emit noticeChanged();
     }
 }
 
@@ -159,7 +105,6 @@ void GroqSttClient::setRetrySecondsRemaining(int seconds) {
     if (m_retrySecondsRemaining != seconds) {
         m_retrySecondsRemaining = seconds;
         emit retrySecondsRemainingChanged();
-        emit noticeChanged();
     }
 }
 
@@ -408,18 +353,12 @@ void GroqSttClient::handleTranscribeResponse(const GroqApiResponse& res) {
 }
 
 void GroqSttClient::setLastError(const QString& error, ErrorCategory category) {
-    bool changed = false;
     if (m_lastError != error) {
         m_lastError = error;
         emit lastErrorChanged();
-        changed = true;
     }
     if (m_errorCategory != category) {
         m_errorCategory = category;
         emit errorCategoryChanged();
-        changed = true;
-    }
-    if (changed) {
-        emit noticeChanged();
     }
 }

@@ -68,13 +68,10 @@ void SpeechController::setPipeline(TranscriptionPipeline* pipeline) {
         connect(m_pipeline, &TranscriptionPipeline::lastErrorChanged, this, &SpeechController::lastErrorChanged);
         connect(m_pipeline, &TranscriptionPipeline::lastTranscriptionChanged, this,
                 &SpeechController::lastTranscriptionChanged);
-        connect(m_pipeline, &TranscriptionPipeline::activeNoticeChanged, this, &SpeechController::activeNoticeChanged);
         connect(m_pipeline, &TranscriptionPipeline::maxDurationWarningTriggered, this,
                 &SpeechController::maxDurationWarningTriggered);
         connect(m_pipeline, &TranscriptionPipeline::llmFallbackWarningTriggered, this,
                 &SpeechController::llmFallbackWarningTriggered);
-        connect(m_pipeline, &TranscriptionPipeline::openSettingsRequested, this,
-                &SpeechController::openSettingsRequested);
     }
 
     updatePresenterState();
@@ -201,7 +198,6 @@ void SpeechController::initialize() {
 
 void SpeechController::updatePresenterState() {
     emit canRecordChanged();
-    emit activeNoticeChanged();
     emit systemHealthChanged();
 }
 
@@ -254,47 +250,6 @@ void SpeechController::setSoundEnabled(bool enabled) {
         QSettings settings;
         settings.setValue(u"Audio/SoundEnabled"_s, m_soundEnabled);
         emit soundEnabledChanged();
-    }
-}
-
-QVariantMap SpeechController::activeNotice() const {
-    if (m_pipeline && m_pipeline->hasActiveNotice()) {
-        return m_pipeline->activeNotice();
-    }
-
-    if (m_injector && m_injector->hasFatalError()) {
-        QVariantMap notice;
-        notice[u"hasNotice"_s] = true;
-        notice[u"type"_s] = u"danger"_s;
-        notice[u"title"_s] = tr("Direct Typing Service Stopped");
-        notice[u"message"_s] = m_injector->fatalErrorMessage().isEmpty()
-                                   ? tr("The background key injection daemon encountered an error. Text will fallback "
-                                        "to clipboard paste until restarted.")
-                                   : m_injector->fatalErrorMessage();
-        notice[u"actionText"_s] = tr("Restart Service");
-        notice[u"actionId"_s] = u"restartInjector"_s;
-        notice[u"secondaryActionText"_s] = tr("Settings");
-        notice[u"secondaryActionId"_s] = u"openSystemSettings"_s;
-        return notice;
-    }
-
-    return {};
-}
-
-bool SpeechController::hasActiveNotice() const {
-    return activeNotice().value(u"hasNotice"_s, false).toBool();
-}
-
-void SpeechController::triggerNoticeAction(const QString& actionId) {
-    qCDebug(lcSpeech) << "SpeechController: triggerNoticeAction:" << actionId;
-    if (actionId == u"restartInjector"_s) {
-        if (m_injector) {
-            m_injector->restartService();
-        }
-    } else if (actionId == u"openSystemSettings"_s) {
-        emit openSettingsRequested(4);
-    } else if (m_pipeline) {
-        m_pipeline->triggerNoticeAction(actionId);
     }
 }
 

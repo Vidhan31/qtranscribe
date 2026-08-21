@@ -12,15 +12,7 @@ using namespace Qt::StringLiterals;
 using namespace std::chrono_literals;
 
 TranscriptionPipeline::TranscriptionPipeline(QObject* parent)
-    : QObject(parent)
-    , m_maxDurationNoticeTimer(new QTimer(this)) {
-    m_maxDurationNoticeTimer->setInterval(6s);
-    m_maxDurationNoticeTimer->setSingleShot(true);
-    connect(m_maxDurationNoticeTimer, &QTimer::timeout, this, [this]() {
-        m_showMaxDurationNotice = false;
-        emit activeNoticeChanged();
-    });
-
+    : QObject(parent) {
     QSettings settings;
     const QString backendStr = settings.value(u"Speech/Backend"_s, u"Groq"_s).toString();
     if (backendStr == u"WhisperCpp"_s) {
@@ -74,7 +66,6 @@ void TranscriptionPipeline::registerBackend(Backend backend, AbstractSttClient* 
         disconnect(old, &AbstractSttClient::errorOccurred, this, &TranscriptionPipeline::onSttError);
         disconnect(old, &AbstractSttClient::readyChanged, this, &TranscriptionPipeline::updatePipelineHealth);
         disconnect(old, &AbstractSttClient::busyChanged, this, &TranscriptionPipeline::updatePipelineHealth);
-        disconnect(old, &AbstractSttClient::noticeChanged, this, &TranscriptionPipeline::activeNoticeChanged);
     }
 
     if (client) {
@@ -83,7 +74,6 @@ void TranscriptionPipeline::registerBackend(Backend backend, AbstractSttClient* 
         connect(client, &AbstractSttClient::errorOccurred, this, &TranscriptionPipeline::onSttError);
         connect(client, &AbstractSttClient::readyChanged, this, &TranscriptionPipeline::updatePipelineHealth);
         connect(client, &AbstractSttClient::busyChanged, this, &TranscriptionPipeline::updatePipelineHealth);
-        connect(client, &AbstractSttClient::noticeChanged, this, &TranscriptionPipeline::activeNoticeChanged);
 
         if (backend == m_activeBackend && m_initialized) {
             client->activate();
@@ -310,10 +300,7 @@ void TranscriptionPipeline::onRecordingFinished(const QByteArray& wavData) {
 
 void TranscriptionPipeline::onMaxDurationReached() {
     qWarning() << "TranscriptionPipeline: Maximum recording duration safety limit reached";
-    m_showMaxDurationNotice = true;
-    m_maxDurationNoticeTimer->start();
     emit maxDurationWarningTriggered();
-    emit activeNoticeChanged();
     stopRecording();
 }
 
@@ -390,76 +377,6 @@ void TranscriptionPipeline::onSttError(const QString& error) {
 
 void TranscriptionPipeline::updatePipelineHealth() {
     emit canRecordChanged();
-    emit activeNoticeChanged();
-}
-
-QVariantMap TranscriptionPipeline::activeNotice() const {
-    if (auto* stt = activeSttClient()) {
-        if (stt->hasNotice()) {
-            return stt->notice();
-        }
-    }
-
-    if (m_recorder && !m_recorder->hasAudioInputDevice()) {
-        QVariantMap notice;
-        notice[u"hasNotice"_s] = true;
-        notice[u"type"_s] = u"warning"_s;
-        notice[u"title"_s] = tr("No Microphone Detected");
-        notice[u"message"_s] = tr("Please connect a microphone or check your audio permissions in system settings.");
-        notice[u"actionText"_s] = tr("Audio Settings");
-        notice[u"actionId"_s] = u"openSpeechSettings"_s;
-        return notice;
-    }
-
-    if (m_showMaxDurationNotice) {
-        QVariantMap notice;
-        notice[u"hasNotice"_s] = true;
-        notice[u"type"_s] = u"info"_s;
-        notice[u"title"_s] = tr("Maximum Duration (5 min) Reached");
-        notice[u"message"_s] =
-            tr("Recording automatically stopped at the 5-minute safety ceiling. Transcribing audio now…");
-        return notice;
-    }
-
-    if (m_state == State::Error) {
-        QVariantMap notice;
-        notice[u"hasNotice"_s] = true;
-        notice[u"type"_s] = u"danger"_s;
-        notice[u"title"_s] =
-            (m_activeBackend == Backend::WhisperCpp) ? tr("Offline Transcription Failed") : tr("Transcription Failed");
-        notice[u"message"_s] = m_lastError.isEmpty() ? (activeSttClient() && !activeSttClient()->lastError().isEmpty()
-                                                            ? activeSttClient()->lastError()
-                                                            : tr("An error occurred during transcription."))
-                                                     : m_lastError;
-        notice[u"actionText"_s] = tr("Retry Transcription");
-        notice[u"actionId"_s] = u"retryStt"_s;
-        notice[u"secondaryActionText"_s] = tr("Dismiss");
-        notice[u"secondaryActionId"_s] = u"dismissError"_s;
-        return notice;
-    }
-
-    return {};
-}
-
-bool TranscriptionPipeline::hasActiveNotice() const {
-    return activeNotice().value(u"hasNotice"_s, false).toBool();
-}
-
-void TranscriptionPipeline::triggerNoticeAction(const QString& actionId) {
-    qCDebug(lcSpeech) << "TranscriptionPipeline: triggerNoticeAction:" << actionId;
-    if (actionId == u"openApiKeySettings"_s) {
-        emit openSettingsRequested(0);
-    } else if (actionId == u"openSpeechSettings"_s) {
-        emit openSettingsRequested(1);
-    } else if (actionId == u"openOfflineSettings"_s) {
-        emit openSettingsRequested(2);
-    } else if (actionId == u"openLlmSettings"_s) {
-        emit openSettingsRequested(3);
-    } else if (actionId == u"retryStt"_s) {
-        retry();
-    } else if (actionId == u"dismissError"_s) {
-        clearError();
-    }
 }
 
 void TranscriptionPipeline::setState(State state) {

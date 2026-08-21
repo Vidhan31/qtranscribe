@@ -7,7 +7,6 @@
 #include <QObject>
 #include <QQmlEngine>
 #include <QString>
-#include <QVariantMap>
 
 class AudioRecorder;
 class GroqLlmClient;
@@ -33,8 +32,6 @@ public:
     Q_PROPERTY(QString statusMessage READ statusMessage NOTIFY statusMessageChanged FINAL)
     Q_PROPERTY(QString lastError READ lastError NOTIFY lastErrorChanged FINAL)
     Q_PROPERTY(QString lastTranscription READ lastTranscription NOTIFY lastTranscriptionChanged FINAL)
-    Q_PROPERTY(QVariantMap activeNotice READ activeNotice NOTIFY activeNoticeChanged FINAL)
-    Q_PROPERTY(bool hasActiveNotice READ hasActiveNotice NOTIFY activeNoticeChanged FINAL)
 
 public:
     explicit TranscriptionPipeline(QObject* parent = nullptr);
@@ -55,9 +52,6 @@ public:
     QString lastError() const;
     QString lastTranscription() const;
 
-    QVariantMap activeNotice() const;
-    bool hasActiveNotice() const;
-
     AbstractSttClient* activeSttClient() const;
 
 public slots:
@@ -69,7 +63,6 @@ public slots:
     void retry();
     void clearError();
     void clearLastTranscription();
-    void triggerNoticeAction(const QString& actionId);
 
 signals:
     void stateChanged(TranscriptionPipeline::State newState);
@@ -79,13 +72,11 @@ signals:
     void statusMessageChanged();
     void lastErrorChanged();
     void lastTranscriptionChanged();
-    void activeNoticeChanged();
 
     void transcriptionFinished(const QString& text);
     void errorOccurred(const QString& error);
     void maxDurationWarningTriggered();
     void llmFallbackWarningTriggered(const QString& warning);
-    void openSettingsRequested(int categoryIndex);
 
 private slots:
     void onRecordingFinished(const QByteArray& wavData);
@@ -105,7 +96,6 @@ private:
     AudioRecorder* m_recorder = nullptr;
     QHash<Backend, AbstractSttClient*> m_sttClients;
     GroqLlmClient* m_llmClient = nullptr;
-    QTimer* m_maxDurationNoticeTimer = nullptr;
 
     Backend m_activeBackend = Backend::Groq;
     State m_state = State::Idle;
@@ -115,5 +105,4 @@ private:
     QByteArray m_lastWavData;
 
     bool m_initialized = false;
-    bool m_showMaxDurationNotice = false;
 };

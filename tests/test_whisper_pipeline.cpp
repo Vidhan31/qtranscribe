@@ -157,8 +157,8 @@ private slots:
         QVERIFY(!initialId.isEmpty());
         QCOMPARE(client.modelPath(), manager.selectedModelPath());
 
-        // Since no model is actually loaded in this headless test, hasNotice should be true
-        QVERIFY(client.hasNotice());
+        // Since no model is actually loaded in this headless test, model is not loaded and client is not ready
+        QVERIFY(!client.isModelLoaded());
         QVERIFY(!client.isReady());
 
         // Switch selection to another model if available

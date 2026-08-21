@@ -9,14 +9,6 @@ void AbstractSttClient::deactivate() { }
 
 void AbstractSttClient::retryLast() { }
 
-bool AbstractSttClient::hasNotice() const {
-    return false;
-}
-
-QVariantMap AbstractSttClient::notice() const {
-    return {};
-}
-
 QString AbstractSttClient::lastError() const {
     return {};
 }

@@ -5,7 +5,6 @@
 #include <QObject>
 #include <QQmlEngine>
 #include <QString>
-#include <QVariantMap>
 
 class GlobalShortcutManager;
 class AudioRecorder;
@@ -41,9 +40,6 @@ public:
     Q_PROPERTY(bool enhancing READ enhancing NOTIFY enhancingChanged FINAL)
     Q_PROPERTY(QString lastTranscription READ lastTranscription NOTIFY lastTranscriptionChanged FINAL)
     Q_PROPERTY(bool soundEnabled READ soundEnabled WRITE setSoundEnabled NOTIFY soundEnabledChanged FINAL)
-
-    Q_PROPERTY(QVariantMap activeNotice READ activeNotice NOTIFY activeNoticeChanged FINAL)
-    Q_PROPERTY(bool hasActiveNotice READ hasActiveNotice NOTIFY activeNoticeChanged FINAL)
 
     Q_PROPERTY(bool systemShortcutHasIssue READ systemShortcutHasIssue NOTIFY systemHealthChanged FINAL)
     Q_PROPERTY(bool systemShortcutSupported READ systemShortcutSupported NOTIFY systemHealthChanged FINAL)
@@ -89,9 +85,6 @@ public:
     bool soundEnabled() const;
     void setSoundEnabled(bool enabled);
 
-    QVariantMap activeNotice() const;
-    bool hasActiveNotice() const;
-
     bool systemShortcutHasIssue() const;
     bool systemShortcutSupported() const;
     QString systemShortcutStatus() const;
@@ -107,7 +100,6 @@ public:
 
 public slots:
     void initialize();
-    void triggerNoticeAction(const QString& actionId);
     void appendDictationPadText(const QString& text);
     void clearDictationPad();
     void copyDictationPad();
@@ -137,13 +129,11 @@ signals:
     void enhancingChanged();
     void lastTranscriptionChanged();
     void soundEnabledChanged();
-    void activeNoticeChanged();
     void systemHealthChanged();
     void dictationPadTextChanged();
 
     void requestShowWindow();
     void requestQuitApp();
-    void openSettingsRequested(int categoryIndex);
     void maxDurationWarningTriggered();
     void llmFallbackWarningTriggered(const QString& warning);
 

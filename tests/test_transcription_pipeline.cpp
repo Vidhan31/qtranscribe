@@ -69,22 +69,8 @@ public:
         return m_lastError;
     }
 
-    void setNotice(const QVariantMap& noticeMap) {
-        m_notice = noticeMap;
-        emit noticeChanged();
-    }
-
-    bool hasNotice() const override {
-        return !m_notice.isEmpty();
-    }
-
-    QVariantMap notice() const override {
-        return m_notice;
-    }
-
     QByteArray m_lastReceivedWav;
     QString m_lastError;
-    QVariantMap m_notice;
     int m_transcribeCallCount = 0;
     int m_retryCallCount = 0;
     bool m_ready = true;
@@ -167,7 +153,6 @@ private slots:
         QCOMPARE(pipeline.state(), TranscriptionPipeline::State::Error);
         QCOMPARE(pipeline.lastError(), u"Rate Limit 429"_s);
         QCOMPARE(errorSpy.count(), 1);
-        QVERIFY(pipeline.hasActiveNotice());
 
         pipeline.retry();
 
@@ -196,20 +181,18 @@ private slots:
         QCOMPARE(groqClient.m_cancelled, true);
     }
 
-    void testNoticePolymorphism() {
+    void testClientReadinessAndCanRecord() {
         TranscriptionPipeline pipeline;
         FakeSttClient groqClient;
+        groqClient.setReady(false);
         pipeline.registerBackend(TranscriptionPipeline::Backend::Groq, &groqClient);
         pipeline.setActiveBackend(TranscriptionPipeline::Backend::Groq);
 
-        QVariantMap mockNotice;
-        mockNotice[u"hasNotice"_s] = true;
-        mockNotice[u"type"_s] = u"warning"_s;
-        mockNotice[u"title"_s] = u"API Key Missing"_s;
-        groqClient.setNotice(mockNotice);
+        QCOMPARE(pipeline.canRecord(), false);
 
-        QVERIFY(pipeline.hasActiveNotice());
-        QCOMPARE(pipeline.activeNotice().value(u"title"_s).toString(), u"API Key Missing"_s);
+        groqClient.setReady(true);
+        // Note: canRecord also requires an active audio input device from recorder
+        QCOMPARE(groqClient.isReady(), true);
     }
 };
 
