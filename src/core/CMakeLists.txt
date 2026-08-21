@@ -9,8 +9,8 @@ add_library(qtranscribe_core STATIC
     GroqApiClient.cpp
     GroqResponseParser.h
     GroqResponseParser.cpp
-    ApiRequestHandler.h
-    ApiRequestHandler.cpp
+    HttpRequestRunner.h
+    HttpRequestRunner.cpp
     GroqSttClient.h
     GroqSttClient.cpp
     WhisperWorker.h

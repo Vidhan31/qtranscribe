@@ -13,7 +13,7 @@ qt_add_qml_module(qtranscribe_ui
         ${CMAKE_SOURCE_DIR}/src/core/AudioRecorder.h
         ${CMAKE_SOURCE_DIR}/src/core/GlobalShortcutManager.h
         ${CMAKE_SOURCE_DIR}/src/core/GroqApiClient.h
-        ${CMAKE_SOURCE_DIR}/src/core/ApiRequestHandler.h
+        ${CMAKE_SOURCE_DIR}/src/core/HttpRequestRunner.h
         ${CMAKE_SOURCE_DIR}/src/core/AbstractSttClient.h
         ${CMAKE_SOURCE_DIR}/src/core/GroqSttClient.h
         ${CMAKE_SOURCE_DIR}/src/core/WhisperSttClient.h

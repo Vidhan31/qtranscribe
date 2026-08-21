@@ -17,8 +17,7 @@ using namespace Qt::StringLiterals;
 
 GroqApiClient::GroqApiClient(QObject* parent)
     : QObject(parent)
-    , m_nam(new QNetworkAccessManager(this))
-    , m_restMgr(new QRestAccessManager(m_nam, this)) {
+    , m_nam(new QNetworkAccessManager(this)) {
     QNetworkProxyFactory::setUseSystemConfiguration(true);
 
     // Enforce modern TLS security (TLS 1.2+ minimum, ALPN HTTP/2 negotiation, strict peer verification)
@@ -95,10 +94,6 @@ QNetworkAccessManager* GroqApiClient::networkAccessManager() {
     return m_nam;
 }
 
-QRestAccessManager* GroqApiClient::restAccessManager() {
-    return m_restMgr;
-}
-
 const QNetworkRequestFactory& GroqApiClient::requestFactory() const {
     return m_requestFactory;
 }
@@ -109,7 +104,7 @@ QNetworkRequest GroqApiClient::createApiRequest(const QString& relativePath, con
     request.setAttribute(QNetworkRequest::Http2AllowedAttribute, true);
     request.setTransferTimeout(kDefaultTransferTimeout);
     if (!contentType.isEmpty()) {
-        request.setHeader(QNetworkRequest::ContentTypeHeader, contentType);
+        request.setHeader(QNetworkRequest::KnownHeaders::ContentTypeHeader, contentType);
     }
     return request;
 }

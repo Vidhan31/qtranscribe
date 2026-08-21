@@ -10,7 +10,6 @@
 #include <QNetworkRequestFactory>
 #include <QObject>
 #include <QQmlEngine>
-#include <QRestAccessManager>
 #include <QString>
 #include <QUrl>
 #include <qt6keychain/keychain.h>
@@ -37,7 +36,6 @@ public:
     bool apiKeySet() const;
 
     QNetworkAccessManager* networkAccessManager();
-    QRestAccessManager* restAccessManager();
     const QNetworkRequestFactory& requestFactory() const;
 
     QNetworkRequest createApiRequest(const QString& relativePath, const QString& contentType = QString()) const;
@@ -65,7 +63,6 @@ private:
     void deleteApiKeyFromKeychain();
 
     QNetworkAccessManager* m_nam = nullptr;
-    QRestAccessManager* m_restMgr = nullptr;
     QNetworkRequestFactory m_requestFactory;
     QString m_apiKey;
 

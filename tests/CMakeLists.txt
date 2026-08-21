@@ -45,3 +45,26 @@ add_test(
     NAME TranscriptionPipelineTest
     COMMAND test_transcription_pipeline
 )
+
+qt_add_executable(test_http_request_runner
+    test_http_request_runner.cpp
+)
+
+target_link_libraries(test_http_request_runner
+    PRIVATE
+        qtranscribe_core
+        Qt6::Core
+        Qt6::Test
+        Qt6::Network
+)
+
+target_include_directories(test_http_request_runner
+    PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/src/core
+)
+
+add_test(
+    NAME HttpRequestRunnerTest
+    COMMAND test_http_request_runner
+)
