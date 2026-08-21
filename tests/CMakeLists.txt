@@ -119,7 +119,23 @@ add_test(
     COMMAND test_ipc_server
 )
 
-file(REAL_PATH "${CMAKE_PREFIX_PATH}/lib" QT_TEST_LIB_DIR EXPAND_TILDE)
+set(QT_TEST_LIB_DIRS "")
+foreach(PREFIX_ENTRY IN LISTS CMAKE_PREFIX_PATH)
+    file(REAL_PATH "${PREFIX_ENTRY}/lib" EXPANDED_LIB_DIR EXPAND_TILDE)
+    if(EXISTS "${EXPANDED_LIB_DIR}")
+        list(APPEND QT_TEST_LIB_DIRS "${EXPANDED_LIB_DIR}")
+    endif()
+endforeach()
+if(DEFINED QT6_INSTALL_LIBS AND EXISTS "${QT6_INSTALL_LIBS}")
+    list(APPEND QT_TEST_LIB_DIRS "${QT6_INSTALL_LIBS}")
+endif()
+if(QT_TEST_LIB_DIRS)
+    list(REMOVE_DUPLICATES QT_TEST_LIB_DIRS)
+    list(JOIN QT_TEST_LIB_DIRS ":" QT_TEST_LIB_PATH_STR)
+    set(QT_TEST_LD_PREPEND "${QT_TEST_LIB_PATH_STR}:")
+else()
+    set(QT_TEST_LD_PREPEND "")
+endif()
 
 set_tests_properties(
     WhisperPipelineTest
@@ -128,5 +144,5 @@ set_tests_properties(
     HttpRequestRunnerTest
     IpcServerTest
     PROPERTIES
-        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_MEDIA_BACKEND=null;LD_LIBRARY_PATH=${QT_TEST_LIB_DIR}:$ENV{LD_LIBRARY_PATH}"
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_MEDIA_BACKEND=null;LD_LIBRARY_PATH=${QT_TEST_LD_PREPEND}$ENV{LD_LIBRARY_PATH}"
 )
