@@ -316,7 +316,7 @@ void TranscriptionPipeline::onSttTranscriptionReady(const QString& text) {
         return;
     }
 
-    qCDebug(lcSpeech) << "TranscriptionPipeline: STT transcription received:" << text;
+    qCDebug(lcSpeech) << "TranscriptionPipeline: STT transcription received (" << text.size() << "chars)";
 
     if (text.trimmed().isEmpty()) {
         setState(State::Idle);
@@ -338,7 +338,7 @@ void TranscriptionPipeline::onSttTranscriptionReady(const QString& text) {
 }
 
 void TranscriptionPipeline::onLlmEnhancementReady(const QString& enhancedText) {
-    qCDebug(lcSpeech) << "TranscriptionPipeline: LLM enhanced text received:" << enhancedText;
+    qCDebug(lcSpeech) << "TranscriptionPipeline: LLM enhanced text received (" << enhancedText.size() << "chars)";
     completeTranscription(enhancedText);
 }
 
