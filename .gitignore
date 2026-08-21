@@ -74,3 +74,7 @@ compile_commands.json
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+# Agent Customizations & Skills
+.agents/
+skills-lock.json
