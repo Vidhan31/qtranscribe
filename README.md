@@ -100,7 +100,7 @@ Tested on modern Wayland compositors:
     1. Open **Settings** -> **Keyboard** -> **Keyboard Shortcuts**.
     2. Add a custom shortcut (for example `Ctrl+Shift+Space` or `Super+Space`).
     3. Set the command to: `qtranscribe --toggle`
-- **Key injection permissions (`keyinjectord`).** Wayland prevents unprivileged applications from injecting input events into other windows. To type at the cursor, `keyinjectord` writes to `/dev/uinput`. It requests `cap_dac_override` only to open `/dev/uinput` during initialization, immediately drops all capabilities permanently, and locks the process using `PR_SET_NO_NEW_PRIVS` (see [`src/keyinjectord/capability.cpp`](src/keyinjectord/capability.cpp)).
+- **Key injection permissions (`keyinjectord`).** Wayland prevents unprivileged applications from injecting input events into other windows. To type at the cursor, `keyinjectord` writes to `/dev/uinput`. It requests `cap_dac_override` only to open `/dev/uinput` during initialization, immediately drops all capabilities permanently, and locks the process using `PR_SET_NO_NEW_PRIVS` (see [`src/keyinjectord/capability.cpp`](src/keyinjectord/capability.cpp)). IPC between `qtranscribe` and `keyinjectord` occurs strictly over an anonymous `socketpair()` passed via an inherited file descriptor, preventing discovery or access by other local processes.
 - **Backend service.** Audio is sent to Groq's cloud API for transcription. For fully offline dictation without network requests, consider tools built on local `whisper.cpp`.
 
 ---

@@ -27,7 +27,6 @@ public:
 
     bool sendCommand(keyinjectord::Opcode opcode, int timeoutMs = 2000);
     bool ensureDaemonRunning();
-    QString socketPath() const;
 
 signals:
     void connectedChanged();

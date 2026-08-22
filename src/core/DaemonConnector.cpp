@@ -3,10 +3,14 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
-#include <QFileDevice>
 #include <QStandardPaths>
 #include <QThread>
 
+#include <cerrno>
+#include <cstring>
+
+#include <sys/socket.h>
+#include <fcntl.h>
 #include <unistd.h>
 
 using namespace Qt::StringLiterals;
@@ -46,31 +50,27 @@ QString DaemonConnector::statusMessage() const {
     return m_statusMessage;
 }
 
-QString DaemonConnector::socketPath() const {
-    QString xdgRuntime = QString::fromLocal8Bit(qgetenv("XDG_RUNTIME_DIR"));
-    if (!xdgRuntime.isEmpty()) {
-        return xdgRuntime + u"/keyinjectord.sock"_s;
-    }
-
-    // Secure fallback matching keyinjectord daemon path
-    QString userDir = u"/tmp/qtranscribe-%1"_s.arg(getuid());
-    QDir().mkdir(userDir);
-    QFile::setPermissions(userDir, QFileDevice::ReadUser | QFileDevice::WriteUser | QFileDevice::ExeUser);
-    return userDir + u"/keyinjectord.sock"_s;
-}
-
 bool DaemonConnector::ensureDaemonRunning() {
-    {
-        QLocalSocket testSocket;
-        testSocket.connectToServer(socketPath());
-        if (testSocket.waitForConnected(200)) {
-            testSocket.disconnectFromServer();
-            return true;
-        }
+    if (isConnected()) {
+        return true;
     }
 
-    if (m_daemonProcess && m_daemonProcess->state() != QProcess::NotRunning) {
+    if (m_daemonProcess && m_daemonProcess->state() != QProcess::NotRunning && m_socket &&
+        m_socket->state() == QLocalSocket::ConnectedState) {
         return true;
+    }
+
+    // Clean up any stale state before launching
+    if (m_socket->state() != QLocalSocket::UnconnectedState) {
+        m_socket->close();
+    }
+    if (m_daemonProcess && m_daemonProcess->state() != QProcess::NotRunning) {
+        m_daemonProcess->terminate();
+        if (!m_daemonProcess->waitForFinished(500)) {
+            m_daemonProcess->kill();
+        }
+        delete m_daemonProcess;
+        m_daemonProcess = nullptr;
     }
 
     const QString appDir = QCoreApplication::applicationDirPath();
@@ -90,55 +90,68 @@ bool DaemonConnector::ensureDaemonRunning() {
 
         setStatusMessage(u"Starting keyinjectord (%1)..."_s.arg(daemonExecutable));
 
+        int fds[2];
+        if (::socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0, fds) != 0) {
+            lastCapturedError =
+                u"Failed to create IPC socketpair: %1"_s.arg(QString::fromLocal8Bit(std::strerror(errno)));
+            setLastError(lastCapturedError);
+            setFatalError(true, lastCapturedError);
+            return false;
+        }
+
+        int parentFd = fds[0];
+        int childFd = fds[1];
+
         if (!m_daemonProcess) {
             m_daemonProcess = new QProcess(this);
         }
 
         m_daemonProcess->setProcessChannelMode(QProcess::MergedChannels);
-        m_daemonProcess->start(daemonExecutable, {});
+
+        m_daemonProcess->setChildProcessModifier([childFd, parentFd]() {
+            ::close(parentFd);
+            int flags = fcntl(childFd, F_GETFD);
+            if (flags >= 0) {
+                fcntl(childFd, F_SETFD, flags & ~FD_CLOEXEC);
+            }
+        });
+
+        m_daemonProcess->start(daemonExecutable, {u"--socket-fd"_s, QString::number(childFd)});
+        ::close(childFd);
 
         if (!m_daemonProcess->waitForStarted(2000)) {
+            ::close(parentFd);
             lastCapturedError = u"Failed to launch %1: %2"_s.arg(daemonExecutable, m_daemonProcess->errorString());
             delete m_daemonProcess;
             m_daemonProcess = nullptr;
             continue;
         }
 
-        bool success = false;
-        for (int retry = 0; retry < 25; ++retry) {
-            QThread::msleep(100);
-
-            if (m_daemonProcess->state() == QProcess::NotRunning) {
-                QByteArray output = m_daemonProcess->readAll();
-                lastCapturedError = QString::fromUtf8(output).trimmed();
-                if (lastCapturedError.isEmpty()) {
-                    lastCapturedError = daemonExecutable + u" exited immediately with exit code "_s +
-                                        QString::number(m_daemonProcess->exitCode());
-                }
-                delete m_daemonProcess;
-                m_daemonProcess = nullptr;
-                break;
-            }
-
-            QLocalSocket testSocket;
-            testSocket.connectToServer(socketPath());
-            if (testSocket.waitForConnected(100)) {
-                testSocket.disconnectFromServer();
-                success = true;
-                break;
-            }
-        }
-
-        if (success) {
-            setFatalError(false);
-            return true;
-        }
-
-        if (m_daemonProcess) {
+        if (!m_socket->setSocketDescriptor(parentFd, QLocalSocket::ConnectedState, QIODevice::ReadWrite)) {
+            ::close(parentFd);
+            lastCapturedError = u"Failed to attach socket descriptor in QLocalSocket"_s;
             m_daemonProcess->terminate();
             delete m_daemonProcess;
             m_daemonProcess = nullptr;
+            continue;
         }
+
+        // Brief check to catch immediate startup crashes (e.g. missing cap_dac_override)
+        if (m_daemonProcess->waitForFinished(50)) {
+            QByteArray output = m_daemonProcess->readAll();
+            lastCapturedError = QString::fromUtf8(output).trimmed();
+            if (lastCapturedError.isEmpty()) {
+                lastCapturedError = daemonExecutable + u" exited immediately with exit code "_s +
+                                    QString::number(m_daemonProcess->exitCode());
+            }
+            m_socket->close();
+            delete m_daemonProcess;
+            m_daemonProcess = nullptr;
+            continue;
+        }
+
+        onConnected();
+        return true;
     }
 
     if (!lastCapturedError.isEmpty()) {
@@ -153,30 +166,24 @@ bool DaemonConnector::ensureDaemonRunning() {
 }
 
 bool DaemonConnector::connectToServer() {
-    if (m_socket->state() != QLocalSocket::UnconnectedState) {
-        setStatusMessage(u"Already connected or connecting"_s);
+    if (isConnected()) {
+        setStatusMessage(u"Already connected"_s);
         return true;
     }
 
-    if (!ensureDaemonRunning()) {
-        return false;
-    }
-
-    QString path = socketPath();
-    setStatusMessage(u"Connecting to %1..."_s.arg(path));
-    setLastError({});
-
-    m_socket->connectToServer(path);
-    return true;
+    return ensureDaemonRunning();
 }
 
 void DaemonConnector::disconnectFromServer() {
-    if (m_socket->state() != QLocalSocket::UnconnectedState) {
-        m_socket->disconnectFromServer();
+    if (m_socket && m_socket->state() != QLocalSocket::UnconnectedState) {
+        m_socket->close();
     }
 }
 
 void DaemonConnector::stopDaemon() {
+    if (m_socket && m_socket->state() != QLocalSocket::UnconnectedState) {
+        m_socket->close();
+    }
     if (m_daemonProcess && m_daemonProcess->state() != QProcess::NotRunning) {
         setStatusMessage(u"Stopping keyinjectord daemon..."_s);
         m_daemonProcess->terminate();
@@ -190,7 +197,6 @@ void DaemonConnector::stopDaemon() {
 
 void DaemonConnector::restartService() {
     stopDaemon();
-    disconnectFromServer();
     connectToServer();
 }
 
@@ -254,8 +260,13 @@ void DaemonConnector::onDisconnected() {
 void DaemonConnector::onErrorOccurred(QLocalSocket::LocalSocketError error) {
     Q_UNUSED(error)
     QString msg = m_socket->errorString();
-    if (error == QLocalSocket::ServerNotFoundError || error == QLocalSocket::ConnectionRefusedError) {
-        msg = u"keyinjectord is not running."_s;
+    if (m_daemonProcess && m_daemonProcess->state() == QProcess::NotRunning) {
+        QByteArray output = m_daemonProcess->readAll();
+        QString procErr = QString::fromUtf8(output).trimmed();
+        if (!procErr.isEmpty()) {
+            msg = procErr;
+            setFatalError(true, msg);
+        }
     }
     setLastError(msg);
     emit connectedChanged();
