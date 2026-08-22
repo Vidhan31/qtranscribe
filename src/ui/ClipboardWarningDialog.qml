@@ -8,7 +8,7 @@ import "controls"
 Dialog {
     id: root
 
-    title: qsTr("Important: Clipboard Notice")
+    title: qsTr("Clipboard Overwrite Notice")
     modal: true
     width: 480
     anchors.centerIn: parent
@@ -37,7 +37,7 @@ Dialog {
 
     contentItem: ScrollView {
         id: scrollView
-        implicitHeight: Math.min(warningLayout.implicitHeight, 380)
+        implicitHeight: Math.min(warningLayout.implicitHeight, 420)
         contentWidth: availableWidth
         clip: true
 
@@ -56,43 +56,91 @@ Dialog {
 
             Rectangle {
                 Layout.fillWidth: true
-                implicitHeight: warningContentLayout.implicitHeight + (Theme.spacingMd * 2)
-                color: Theme.statusBgColor(Theme.colorWarning, 0.12)
-                border.color: Theme.statusBorderColor(Theme.colorWarning, 0.4)
+                implicitHeight: cardContentColumn.implicitHeight + (Theme.spacingMd * 2)
+                color: Theme.cardBgSubtle
+                border.color: Theme.cardBorder
                 border.width: 1
                 radius: Theme.radiusSm
 
-                RowLayout {
-                    id: warningContentLayout
+                ColumnLayout {
+                    id: cardContentColumn
                     anchors.fill: parent
                     anchors.margins: Theme.spacingMd
-                    spacing: Theme.spacingSm
+                    spacing: Theme.spacingMd
 
-                    StyledIcon {
-                        source: "qrc:/qt/qml/QTranscribe/assets/icons/info.svg"
-                        color: Theme.colorWarning
-                        size: 22
-                        Layout.alignment: Qt.AlignTop
-                    }
-
-                    ColumnLayout {
+                    RowLayout {
                         Layout.fillWidth: true
-                        spacing: 4
+                        Layout.alignment: Qt.AlignTop
+                        spacing: Theme.spacingSm
 
-                        StyledText {
-                            text: qsTr("Clipboard Overwrite Risk")
-                            customWeight: Font.DemiBold
-                            variant: "body"
-                            customColor: Theme.colorWarning
+                        StyledIcon {
+                            source: "qrc:/qt/qml/QTranscribe/assets/icons/check.svg"
+                            color: Theme.colorSuccess
+                            size: 18
+                            Layout.alignment: Qt.AlignTop
                         }
 
-                        StyledText {
-                            text: qsTr(
-                                      "Unless your desktop environment maintains a clipboard history manager (such as a clipboard extension or daemon), transcribing speech may overwrite your currently copied text or media.")
-                            variant: "caption"
-                            colorRole: "secondary"
-                            wrapMode: Text.WordWrap
+                        ColumnLayout {
                             Layout.fillWidth: true
+                            Layout.alignment: Qt.AlignTop
+                            spacing: 2
+
+                            StyledText {
+                                text: qsTr("Text is Preserved")
+                                customWeight: Font.DemiBold
+                                variant: "body"
+                                customColor: Theme.colorSuccess
+                            }
+
+                            StyledText {
+                                text: qsTr(
+                                          "Copied plain text is automatically backed up and restored immediately after dictation paste completes.")
+                                variant: "caption"
+                                colorRole: "secondary"
+                                wrapMode: Text.WordWrap
+                                Layout.fillWidth: true
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        Layout.fillWidth: true
+                        implicitHeight: 1
+                        color: Theme.cardBorder
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Layout.alignment: Qt.AlignTop
+                        spacing: Theme.spacingSm
+
+                        StyledIcon {
+                            source: "qrc:/qt/qml/QTranscribe/assets/icons/info.svg"
+                            color: Theme.colorWarning
+                            size: 18
+                            Layout.alignment: Qt.AlignTop
+                        }
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            Layout.alignment: Qt.AlignTop
+                            spacing: 2
+
+                            StyledText {
+                                text: qsTr("Images & Media are Overwritten")
+                                customWeight: Font.DemiBold
+                                variant: "body"
+                                customColor: Theme.colorWarning
+                            }
+
+                            StyledText {
+                                text: qsTr(
+                                          "Non-text clipboard formats (such as images, screenshots, or copied files) cannot be restored and will be overwritten.")
+                                variant: "caption"
+                                colorRole: "secondary"
+                                wrapMode: Text.WordWrap
+                                Layout.fillWidth: true
+                            }
                         }
                     }
                 }
@@ -100,7 +148,7 @@ Dialog {
 
             StyledText {
                 text: qsTr(
-                          "Before starting dictation, please make sure you save any important copied content, or consider installing a clipboard manager extension for your desktop environment.")
+                          "Before transcribing, please paste and save any important copied images or files. Alternatively, consider installing a desktop clipboard manager extension (such as Clipboard Indicator on GNOME).")
                 variant: "caption"
                 colorRole: "secondary"
                 wrapMode: Text.WordWrap

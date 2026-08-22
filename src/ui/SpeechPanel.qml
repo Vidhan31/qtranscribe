@@ -61,7 +61,7 @@ Item {
                 bannerType: "warning"
                 title: qsTr("Clipboard Overwrite Notice")
                 message: qsTr(
-                             "Dictation uses clipboard injection on Wayland. Ensure important copied content is saved or a clipboard manager is active.")
+                             "Transcribing restores copied text, but non-text items (images, files) are overwritten. Paste and save them first, or use a clipboard manager.")
                 actionText: qsTr("Dismiss")
                 onActionClicked: {
                     TextInjectorClient.clipboardBannerDismissed = true;

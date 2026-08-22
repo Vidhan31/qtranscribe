@@ -261,7 +261,7 @@ Item {
 
                 StyledText {
                     text: qsTr(
-                              "On desktop environments without integrated clipboard history (like GNOME or wlroots compositors), direct typing injects text via clipboard paste. This may overwrite your copied data unless a clipboard manager extension is active.")
+                              "On desktop environments without integrated clipboard history (like GNOME or wlroots compositors), dictation injects text via clipboard paste. QTranscribe automatically restores copied text, but non-text clipboard items (such as images, screenshots, or files) cannot be restored and will be lost unless you paste and save them first or use a clipboard manager extension.")
                     variant: "caption"
                     colorRole: "secondary"
                     wrapMode: Text.WordWrap
