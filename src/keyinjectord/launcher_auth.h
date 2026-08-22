@@ -21,6 +21,8 @@ enum class AuthResult {
     StatFailed,
     NotRegularFile,
     WorldWritable,
+    GroupWritable,
+    NonRootOwner,
     UntrustedLocation,
     DeletedExecutable
 };

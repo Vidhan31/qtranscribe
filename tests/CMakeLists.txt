@@ -119,6 +119,11 @@ target_include_directories(test_ipc_server
         ${CMAKE_SOURCE_DIR}/src/keyinjectord
 )
 
+target_compile_definitions(test_ipc_server
+    PRIVATE
+        KEYINJECTORD_DEV_AUTH=1
+)
+
 add_test(
     NAME IpcServerTest
     COMMAND test_ipc_server

@@ -35,6 +35,11 @@ target_link_libraries(keyinjectord PRIVATE
     PkgConfig::LIBCAP
 )
 
+option(KEYINJECTORD_DEV_AUTH "Enable relaxed launcher authorization for development/testing" OFF)
+if(CMAKE_BUILD_TYPE STREQUAL "Debug" OR KEYINJECTORD_DEV_AUTH)
+    target_compile_definitions(keyinjectord PRIVATE KEYINJECTORD_DEV_AUTH=1)
+endif()
+
 if(PROJECT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)
     include(GNUInstallDirs)
     install(TARGETS keyinjectord

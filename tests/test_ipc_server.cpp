@@ -15,6 +15,7 @@
 #include <vector>
 
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 using namespace std::chrono_literals;
@@ -296,6 +297,39 @@ private slots:
 
         std::filesystem::remove(nestedBinary);
         std::filesystem::remove(nestedDir);
+    }
+
+    void testValidateExecutableTopologyRejectsWorldWritable() {
+        char selfExeBuf[PATH_MAX];
+        ssize_t len = readlink("/proc/self/exe", selfExeBuf, sizeof(selfExeBuf) - 1);
+        QVERIFY(len > 0);
+        selfExeBuf[len] = '\0';
+        std::filesystem::path selfPath(selfExeBuf);
+
+        std::filesystem::path tempExe = selfPath.parent_path() / "qtranscribe";
+        FILE* f = fopen(tempExe.c_str(), "w");
+        QVERIFY(f != nullptr);
+        fclose(f);
+
+        // Make world-writable
+        QCOMPARE(::chmod(tempExe.c_str(), 0777), 0);
+
+        keyinjectord::AuthResult res = keyinjectord::AuthResult::Success;
+        bool ok = keyinjectord::validateExecutableTopology(tempExe, selfPath, &res);
+        QVERIFY(!ok);
+        QCOMPARE(res, keyinjectord::AuthResult::WorldWritable);
+
+        std::filesystem::remove(tempExe);
+    }
+
+    void testAuthResultToString() {
+        QCOMPARE(QString(keyinjectord::authResultToString(keyinjectord::AuthResult::Success)), QString("Success"));
+        QCOMPARE(QString(keyinjectord::authResultToString(keyinjectord::AuthResult::WorldWritable)),
+                 QString("Parent executable or directory is world-writable"));
+        QCOMPARE(QString(keyinjectord::authResultToString(keyinjectord::AuthResult::GroupWritable)),
+                 QString("Parent executable or directory is group-writable"));
+        QCOMPARE(QString(keyinjectord::authResultToString(keyinjectord::AuthResult::NonRootOwner)),
+                 QString("Production helper executable, parent binary, or directory is not owned by root (UID 0)"));
     }
 };
 

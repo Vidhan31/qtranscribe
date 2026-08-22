@@ -45,6 +45,10 @@ const char* authResultToString(AuthResult result) {
             return "Parent executable is not a regular file";
         case AuthResult::WorldWritable:
             return "Parent executable or directory is world-writable";
+        case AuthResult::GroupWritable:
+            return "Parent executable or directory is group-writable";
+        case AuthResult::NonRootOwner:
+            return "Production helper executable, parent binary, or directory is not owned by root (UID 0)";
         case AuthResult::UntrustedLocation:
             return "Parent executable is located in an untrusted or non-colocated directory";
         case AuthResult::DeletedExecutable:
@@ -88,12 +92,20 @@ bool validateExecutableTopology(const std::filesystem::path& parentExePath, cons
     }
 
     std::string parentExeName = parentExePath.filename().string();
+#ifdef KEYINJECTORD_DEV_AUTH
     if (parentExeName != "qtranscribe" && parentExeName != "test_ipc_server" &&
         parentExeName != "test_transcription_pipeline") {
         KEYINJECTORD_LOG_ERROR("Launcher authorization failed: unauthorized parent executable name '%s' at '%s'",
                                parentExeName.c_str(), parentExePath.c_str());
         return setResult(AuthResult::UnauthorizedExecutable);
     }
+#else
+    if (parentExeName != "qtranscribe") {
+        KEYINJECTORD_LOG_ERROR("Launcher authorization failed: unauthorized parent executable name '%s' at '%s'",
+                               parentExeName.c_str(), parentExePath.c_str());
+        return setResult(AuthResult::UnauthorizedExecutable);
+    }
+#endif
 
     struct stat parentStat {};
     if (stat(parentExePath.c_str(), &parentStat) != 0) {
@@ -112,6 +124,14 @@ bool validateExecutableTopology(const std::filesystem::path& parentExePath, cons
         return setResult(AuthResult::WorldWritable);
     }
 
+#ifndef KEYINJECTORD_DEV_AUTH
+    if ((parentStat.st_mode & S_IWGRP) && parentStat.st_gid != 0) {
+        KEYINJECTORD_LOG_ERROR("Launcher authorization failed: '%s' is group-writable by non-root group %d",
+                               parentExePath.c_str(), parentStat.st_gid);
+        return setResult(AuthResult::GroupWritable);
+    }
+#endif
+
     struct stat selfStat {};
     if (stat(selfExePath.c_str(), &selfStat) != 0) {
         KEYINJECTORD_LOG_ERROR("Launcher authorization failed: stat(%s) error: %s", selfExePath.c_str(),
@@ -129,6 +149,14 @@ bool validateExecutableTopology(const std::filesystem::path& parentExePath, cons
         return setResult(AuthResult::WorldWritable);
     }
 
+#ifndef KEYINJECTORD_DEV_AUTH
+    if ((selfStat.st_mode & S_IWGRP) && selfStat.st_gid != 0) {
+        KEYINJECTORD_LOG_ERROR("Launcher authorization failed: '%s' is group-writable by non-root group %d",
+                               selfExePath.c_str(), selfStat.st_gid);
+        return setResult(AuthResult::GroupWritable);
+    }
+#endif
+
     std::filesystem::path parentDir = parentExePath.parent_path().lexically_normal();
     std::filesystem::path selfDir = selfExePath.parent_path().lexically_normal();
 
@@ -145,6 +173,14 @@ bool validateExecutableTopology(const std::filesystem::path& parentExePath, cons
         return setResult(AuthResult::WorldWritable);
     }
 
+#ifndef KEYINJECTORD_DEV_AUTH
+    if ((parentDirStat.st_mode & S_IWGRP) && parentDirStat.st_gid != 0) {
+        KEYINJECTORD_LOG_ERROR("Launcher authorization failed: parent directory '%s' is group-writable by non-root group %d",
+                               parentDir.c_str(), parentDirStat.st_gid);
+        return setResult(AuthResult::GroupWritable);
+    }
+#endif
+
     struct stat selfDirStat {};
     if (stat(selfDir.c_str(), &selfDirStat) != 0) {
         KEYINJECTORD_LOG_ERROR("Launcher authorization failed: stat directory (%s) error: %s", selfDir.c_str(),
@@ -157,6 +193,14 @@ bool validateExecutableTopology(const std::filesystem::path& parentExePath, cons
         return setResult(AuthResult::WorldWritable);
     }
 
+#ifndef KEYINJECTORD_DEV_AUTH
+    if ((selfDirStat.st_mode & S_IWGRP) && selfDirStat.st_gid != 0) {
+        KEYINJECTORD_LOG_ERROR("Launcher authorization failed: self directory '%s' is group-writable by non-root group %d",
+                               selfDir.c_str(), selfDirStat.st_gid);
+        return setResult(AuthResult::GroupWritable);
+    }
+#endif
+
     // Colocation validation:
     // Both executables must be directly colocated in the exact same directory, or be the exact same file (self-test).
     if (parentExePath != selfExePath && parentDir != selfDir) {
@@ -167,23 +211,28 @@ bool validateExecutableTopology(const std::filesystem::path& parentExePath, cons
     }
 
     // Verify ownership:
-    if (selfStat.st_uid == 0) {
-        // System-installed helper (root-owned): parent binary and directory must also be root-owned
-        if (parentStat.st_uid != 0 || parentDirStat.st_uid != 0) {
-            KEYINJECTORD_LOG_ERROR("Launcher authorization failed: root system helper invoked by non-root binary '%s'",
-                                   parentExePath.c_str());
-            return setResult(AuthResult::UntrustedLocation);
-        }
-    } else {
-        // User-owned helper (development / portable build): parent binary and directory must belong to current user or
-        // root
+#ifdef KEYINJECTORD_DEV_AUTH
+    if (selfStat.st_uid != 0) {
+        // User-owned helper in development / test mode: parent binary and directory must belong to current user or root
         if ((parentStat.st_uid != getuid() && parentStat.st_uid != 0) ||
             (parentDirStat.st_uid != getuid() && parentDirStat.st_uid != 0)) {
             KEYINJECTORD_LOG_ERROR(
-                "Launcher authorization failed: parent UID (%d) / dir UID (%d) mismatch with current UID (%d)",
+                "Dev launcher authorization failed: parent UID (%d) / dir UID (%d) mismatch with current UID (%d)",
                 parentStat.st_uid, parentDirStat.st_uid, getuid());
             return setResult(AuthResult::UntrustedLocation);
         }
+        KEYINJECTORD_LOG_WARN("Dev launcher authorization accepted for user-owned binary in development mode");
+        return setResult(AuthResult::Success);
+    }
+#endif
+
+    // In production / release mode (or when self is root-owned):
+    // Helper, parent binary, and containing directories must be strictly owned by root (UID 0).
+    if (selfStat.st_uid != 0 || parentStat.st_uid != 0 || parentDirStat.st_uid != 0 || selfDirStat.st_uid != 0) {
+        KEYINJECTORD_LOG_ERROR(
+            "Launcher authorization failed: production helper/parent/dir must be root-owned (self UID: %d, parent UID: %d, parent dir UID: %d, self dir UID: %d)",
+            selfStat.st_uid, parentStat.st_uid, parentDirStat.st_uid, selfDirStat.st_uid);
+        return setResult(AuthResult::NonRootOwner);
     }
 
     return setResult(AuthResult::Success);
