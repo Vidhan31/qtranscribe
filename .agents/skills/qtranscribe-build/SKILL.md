@@ -7,26 +7,22 @@ description: >-
   independently (excluding unified build-all).
 ---
 
-# QTranscribe Separate Component Build Guide
+# QTranscribe Build Guide
 
-Build procedures and commands for compiling the Qt 6 GUI application and keyinjectord daemon independently.
+Build procedures and commands for compiling QTranscribe and its helper daemon `keyinjectord`.
 
-## Why Build Separately?
+## Security & Capability Rules
 
-1. **Preserve Daemon Capabilities:** `keyinjectord` requires elevated Linux capabilities (`cap_dac_override`) to open `/dev/uinput`. Whenever `keyinjectord` is re-linked, the kernel strips this capability. Keeping `keyinjectord` in its own build directory (`build-keyinjectord/`) means you do **not** have to re-run `sudo setcap` when editing and rebuilding the Qt GUI.
-2. **Faster Iteration:** Developing UI/QML or core logic does not re-compile or re-link daemon code.
-3. **Isolated Dependencies:** The Qt GUI requires Qt 6 & QtKeychain; `keyinjectord` requires only `libevdev` and `libcap`.
-4. **Capability Provisioning Rule:** Agents must **never** execute `sudo` or `setcap` directly. Always instruct the **user** to run the `setcap` command when `keyinjectord` is re-linked.
+1. **Development Environment:** `keyinjectord` runs unprivileged in local development builds. Access to `/dev/uinput` is provided via membership in the `input` group (`/etc/udev/rules.d/99-uinput.rules`).
+2. **Capability Mode (`cap_dac_override`):** In production packaging (.deb, .rpm, Arch), `keyinjectord` is installed as root into `/usr/bin` or `/opt/qtranscribe/bin` with `cap_dac_override=p`. `keyinjectord` strictly refuses capability-bearing execution in user-owned build directories to prevent launcher forgery.
+3. **Colocation:** All binaries (`qtranscribe` and `keyinjectord`) are built and installed into the same directory (`build/` during development, or `/usr/bin` / `/opt/qtranscribe/bin` when packaged).
 
 ---
 
 ## Build Reference Table
 
-| Target | Operation | Build Dir | Build & Verify Command | Post-Build User Action |
-| :--- | :--- | :--- | :--- | :--- |
-| **Qt GUI** | Clean Debug | `build/` | `rm -rf build && cmake --preset linux-qt6-debug && cmake --build build && ctest --preset test-debug` | None |
-| **Qt GUI** | Incremental | `build/` | `cmake --build build && ctest --preset test-debug` | None |
-| **Qt GUI** | Clean Release | `build-release/` | `rm -rf build-release && cmake --preset linux-qt6-release -DBUILD_KEYINJECTORD=OFF && cmake --build build-release && ctest --preset test-release` | None |
-| **keyinjectord** | Clean Debug | `build-keyinjectord/` | `rm -rf build-keyinjectord && cmake -S src/keyinjectord --preset keyinjectord-debug && cmake --build build-keyinjectord` | User runs: `sudo setcap "cap_dac_override+p" build-keyinjectord/keyinjectord` |
-| **keyinjectord** | Incremental | `build-keyinjectord/` | `cmake --build build-keyinjectord` | If re-linked, user runs: `sudo setcap "cap_dac_override+p" build-keyinjectord/keyinjectord` |
-| **keyinjectord** | Clean Release | `build-keyinjectord-release/` | `rm -rf build-keyinjectord-release && cmake -S src/keyinjectord --preset keyinjectord-release && cmake --build build-keyinjectord-release` | User runs: `sudo setcap "cap_dac_override+p" build-keyinjectord-release/keyinjectord` |
+| Target | Operation | Build Dir | Build & Verify Command |
+| :--- | :--- | :--- | :--- |
+| **Unified App + Daemon** | Clean Debug | `build/` | `rm -rf build && cmake --preset linux-qt6-debug && cmake --build build && ctest --preset test-debug` |
+| **Unified App + Daemon** | Incremental | `build/` | `cmake --build build && ctest --preset test-debug` |
+| **Unified App + Daemon** | Clean Release | `build-release/` | `rm -rf build-release && cmake --preset linux-qt6-release && cmake --build build-release && ctest --preset test-release` |

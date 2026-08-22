@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <string>
 
+#include <sys/capability.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/un.h>
@@ -118,6 +119,16 @@ bool validateExecutableTopology(const std::filesystem::path& parentExePath, cons
         return setResult(AuthResult::StatFailed);
     }
 
+    if (!S_ISREG(selfStat.st_mode)) {
+        KEYINJECTORD_LOG_ERROR("Launcher authorization failed: '%s' is not a regular file", selfExePath.c_str());
+        return setResult(AuthResult::NotRegularFile);
+    }
+
+    if (selfStat.st_mode & S_IWOTH) {
+        KEYINJECTORD_LOG_ERROR("Launcher authorization failed: '%s' is world-writable", selfExePath.c_str());
+        return setResult(AuthResult::WorldWritable);
+    }
+
     std::filesystem::path parentDir = parentExePath.parent_path().lexically_normal();
     std::filesystem::path selfDir = selfExePath.parent_path().lexically_normal();
 
@@ -134,16 +145,37 @@ bool validateExecutableTopology(const std::filesystem::path& parentExePath, cons
         return setResult(AuthResult::WorldWritable);
     }
 
-    // Verify ownership
+    struct stat selfDirStat {};
+    if (stat(selfDir.c_str(), &selfDirStat) != 0) {
+        KEYINJECTORD_LOG_ERROR("Launcher authorization failed: stat directory (%s) error: %s", selfDir.c_str(),
+                               std::strerror(errno));
+        return setResult(AuthResult::StatFailed);
+    }
+
+    if (selfDirStat.st_mode & S_IWOTH) {
+        KEYINJECTORD_LOG_ERROR("Launcher authorization failed: self directory '%s' is world-writable", selfDir.c_str());
+        return setResult(AuthResult::WorldWritable);
+    }
+
+    // Colocation validation:
+    // Both executables must be directly colocated in the exact same directory, or be the exact same file (self-test).
+    if (parentExePath != selfExePath && parentDir != selfDir) {
+        KEYINJECTORD_LOG_ERROR(
+            "Launcher authorization failed: parent path '%s' is not colocated in helper directory '%s'",
+            parentExePath.c_str(), selfExePath.c_str());
+        return setResult(AuthResult::UntrustedLocation);
+    }
+
+    // Verify ownership:
     if (selfStat.st_uid == 0) {
-        // System-installed root helper: parent must be root-owned or located in a root-owned directory
-        if (parentStat.st_uid != 0 && parentDirStat.st_uid != 0) {
+        // System-installed helper (root-owned): parent binary and directory must also be root-owned
+        if (parentStat.st_uid != 0 || parentDirStat.st_uid != 0) {
             KEYINJECTORD_LOG_ERROR("Launcher authorization failed: root system helper invoked by non-root binary '%s'",
                                    parentExePath.c_str());
             return setResult(AuthResult::UntrustedLocation);
         }
     } else {
-        // User-owned helper (development / portable): parent binary and parent directory must belong to current user or
+        // User-owned helper (development / portable build): parent binary and directory must belong to current user or
         // root
         if ((parentStat.st_uid != getuid() && parentStat.st_uid != 0) ||
             (parentDirStat.st_uid != getuid() && parentDirStat.st_uid != 0)) {
@@ -152,33 +184,6 @@ bool validateExecutableTopology(const std::filesystem::path& parentExePath, cons
                 parentStat.st_uid, parentDirStat.st_uid, getuid());
             return setResult(AuthResult::UntrustedLocation);
         }
-    }
-
-    // Topological validation
-    bool topologyTrusted = false;
-
-    if (parentExePath == selfExePath) {
-        // Self invocation (e.g. test runner)
-        topologyTrusted = true;
-    } else if (parentDir == selfDir) {
-        // Colocated binaries (production / package / portable bundle / root install)
-        topologyTrusted = true;
-    } else if (selfDir.filename() == "keyinjectord" &&
-               (selfDir.parent_path() == parentDir ||
-                (selfDir.parent_path().filename() == "src" && selfDir.parent_path().parent_path() == parentDir))) {
-        // Unified CMake build tree: <build_dir>/qtranscribe and <build_dir>/src/keyinjectord/keyinjectord
-        topologyTrusted = true;
-    } else if (parentDir.parent_path() == selfDir.parent_path() && parentDir.filename().string().starts_with("build") &&
-               selfDir.filename().string().starts_with("build-keyinjectord")) {
-        // Split CMake build tree: <workspace>/build/qtranscribe and <workspace>/build-keyinjectord/keyinjectord
-        topologyTrusted = true;
-    }
-
-    if (!topologyTrusted) {
-        KEYINJECTORD_LOG_ERROR(
-            "Launcher authorization failed: parent path '%s' not in trusted topology with helper '%s'",
-            parentExePath.c_str(), selfExePath.c_str());
-        return setResult(AuthResult::UntrustedLocation);
     }
 
     return setResult(AuthResult::Success);

@@ -74,12 +74,7 @@ bool DaemonConnector::ensureDaemonRunning() {
     }
 
     const QString appDir = QCoreApplication::applicationDirPath();
-    const QStringList candidatePaths = {appDir + u"/keyinjectord"_s,
-                                        appDir + u"/src/keyinjectord/keyinjectord"_s,
-                                        appDir + u"/keyinjectord/keyinjectord"_s,
-                                        appDir + u"/../build-keyinjectord/keyinjectord"_s,
-                                        QDir::currentPath() + u"/build-keyinjectord/keyinjectord"_s,
-                                        QStandardPaths::findExecutable(u"keyinjectord"_s)};
+    const QStringList candidatePaths = {appDir + u"/keyinjectord"_s, QStandardPaths::findExecutable(u"keyinjectord"_s)};
 
     QString lastCapturedError;
 

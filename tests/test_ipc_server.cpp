@@ -270,6 +270,33 @@ private slots:
         QVERIFY(keyinjectord::validateExecutableTopology(selfPath, selfPath, &res));
         QCOMPARE(res, keyinjectord::AuthResult::Success);
     }
+
+    void testValidateExecutableTopologyRejectsNonColocated() {
+        char selfExeBuf[PATH_MAX];
+        ssize_t len = readlink("/proc/self/exe", selfExeBuf, sizeof(selfExeBuf) - 1);
+        QVERIFY(len > 0);
+        selfExeBuf[len] = '\0';
+        std::filesystem::path selfPath(selfExeBuf);
+
+        // Create a real file in a non-colocated subfolder to test the colocation check
+        std::filesystem::path nestedDir = selfPath.parent_path() / "test_nested_dir";
+        std::filesystem::create_directories(nestedDir);
+        std::filesystem::path nestedBinary = nestedDir / "qtranscribe";
+
+        FILE* f = fopen(nestedBinary.c_str(), "w");
+        QVERIFY(f != nullptr);
+        fclose(f);
+
+        keyinjectord::AuthResult res = keyinjectord::AuthResult::Success;
+
+        // Non-colocated directory must be rejected with UntrustedLocation
+        bool ok = keyinjectord::validateExecutableTopology(nestedBinary, selfPath, &res);
+        QVERIFY(!ok);
+        QCOMPARE(res, keyinjectord::AuthResult::UntrustedLocation);
+
+        std::filesystem::remove(nestedBinary);
+        std::filesystem::remove(nestedDir);
+    }
 };
 
 QTEST_GUILESS_MAIN(TestIpcServer)

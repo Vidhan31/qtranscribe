@@ -3,13 +3,13 @@
     "configurePresets": [
         {
             "name": "linux-qt6-debug",
-            "displayName": "Qt 6 Debug (GUI only)",
+            "displayName": "Qt 6 Debug",
             "generator": "Ninja",
             "binaryDir": "${sourceDir}/build",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Debug",
                 "CMAKE_PREFIX_PATH": "~/Qt/6.11.1/gcc_64",
-                "BUILD_KEYINJECTORD": "OFF"
+                "BUILD_KEYINJECTORD": "ON"
             },
             "environment": {
                 "QT_QPA_PLATFORM": "wayland"

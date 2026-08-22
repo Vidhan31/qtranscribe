@@ -23,6 +23,7 @@ endif()
 set(CMAKE_INSTALL_RPATH "$ORIGIN:$ORIGIN/../lib:$ORIGIN/lib")
 set(CMAKE_BUILD_WITH_INSTALL_RPATH FALSE)
 set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
 
 find_package(Qt6 6.11 REQUIRED COMPONENTS Gui Qml Quick QuickControls2 Network Multimedia DBus Widgets WaylandClient QuickEffects)
 find_package(Qt6Keychain REQUIRED)

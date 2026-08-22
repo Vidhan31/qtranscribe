@@ -65,16 +65,14 @@ sudo pacman -R qtranscribe
 ```
 
 ### Portable tarball (`.tar.gz`)
+Ensure your user has `/dev/uinput` permissions (see udev rule in Building from source below):
 
 ```bash
 # 1. Extract archive
 tar -xzf QTranscribe-*-Linux-x86_64.tar.gz
 cd QTranscribe-*-Linux-x86_64
 
-# 2. Grant uinput permission to helper daemon
-sudo setcap "cap_dac_override+p" bin/keyinjectord
-
-# 3. Launch
+# 2. Launch
 ./bin/qtranscribe
 ```
 
@@ -140,27 +138,27 @@ Tested on modern Wayland compositors:
 - QtKeychain (Qt6)
 - `libevdev` and `libcap` development headers
 
-### 1. Build `keyinjectord`
-Build the daemon once and grant required capabilities. Because it builds in its own directory (`build-keyinjectord/`), rebuilding the GUI will not overwrite or clear the capability bit:
+### 1. Configure /dev/uinput permissions (for local builds / portable runs)
+To allow key injection without root capabilities, ensure your user is in the `input` group:
 
 ```bash
-cmake -S src/keyinjectord -B build-keyinjectord -G Ninja && cmake --build build-keyinjectord
-sudo setcap "cap_dac_override+p" build-keyinjectord/keyinjectord
+echo 'KERNEL=="uinput", GROUP="input", MODE="0660"' | sudo tee /etc/udev/rules.d/99-uinput.rules
+sudo udevadm control --reload-rules && sudo udevadm trigger
+sudo usermod -aG input $USER
 ```
 
-### 2. Build GUI application
-The `linux-qt6-debug` preset builds the GUI app and connects to `build-keyinjectord/keyinjectord`:
+### 2. Build application & daemon
+The `linux-qt6-debug` preset builds both `qtranscribe` and `keyinjectord` colocated in `build/`:
 
 ```bash
 cmake --preset linux-qt6-debug && cmake --build build
 ```
 
 ### 3. Full release build
-To build both targets together:
+To build an optimized release:
 
 ```bash
-cmake --preset linux-qt6-release && cmake --build --preset build-release
-sudo setcap "cap_dac_override+p" build-release/src/keyinjectord/keyinjectord
+cmake --preset linux-qt6-release && cmake --build build-release
 ```
 
 ---
@@ -238,7 +236,7 @@ Pre-built packages (`.deb`, `.rpm`, `.pkg.tar.zst`, `.tar.gz`) and SHA-256 check
 
 - **Nothing types into the target field:**
   - Verify the target input field is active and focused.
-  - If running from source or a portable tarball, verify capability permissions: `sudo setcap "cap_dac_override+p" path/to/keyinjectord`. Distro packages configure this automatically.
+  - If running from source or portable tarball, verify your user is in the `input` group or has access to `/dev/uinput`. Distro packages configure root capabilities automatically.
   - Run `qtranscribe` in a terminal to inspect diagnostic logs.
 - **Shortcuts do not trigger on COSMIC or GNOME 46:**
   - These compositors do not implement the XDG Global Shortcuts portal. Configure a custom shortcut in system settings mapped to `qtranscribe --toggle`.
