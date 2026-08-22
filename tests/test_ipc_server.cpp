@@ -306,20 +306,28 @@ private slots:
         selfExeBuf[len] = '\0';
         std::filesystem::path selfPath(selfExeBuf);
 
-        std::filesystem::path tempExe = selfPath.parent_path() / "qtranscribe";
-        FILE* f = fopen(tempExe.c_str(), "w");
-        QVERIFY(f != nullptr);
-        fclose(f);
+        std::filesystem::path testDir = selfPath.parent_path() / "test_isolated_world_writable_dir";
+        std::filesystem::create_directories(testDir);
 
-        // Make world-writable
-        QCOMPARE(::chmod(tempExe.c_str(), 0777), 0);
+        std::filesystem::path mockSelf = testDir / "test_ipc_server";
+        FILE* fSelf = fopen(mockSelf.c_str(), "w");
+        QVERIFY(fSelf != nullptr);
+        fclose(fSelf);
+
+        std::filesystem::path mockParent = testDir / "qtranscribe";
+        FILE* fParent = fopen(mockParent.c_str(), "w");
+        QVERIFY(fParent != nullptr);
+        fclose(fParent);
+
+        QCOMPARE(::chmod(mockParent.c_str(), 0777), 0);
 
         keyinjectord::AuthResult res = keyinjectord::AuthResult::Success;
-        bool ok = keyinjectord::validateExecutableTopology(tempExe, selfPath, &res);
+        bool ok = keyinjectord::validateExecutableTopology(mockParent, mockSelf, &res);
         QVERIFY(!ok);
         QCOMPARE(res, keyinjectord::AuthResult::WorldWritable);
 
-        std::filesystem::remove(tempExe);
+        std::error_code ec;
+        std::filesystem::remove_all(testDir, ec);
     }
 
     void testAuthResultToString() {
