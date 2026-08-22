@@ -57,6 +57,17 @@ Item {
             }
 
             StatusBanner {
+                visible: !TextInjectorClient.isKde && !TextInjectorClient.clipboardBannerDismissed
+                bannerType: "warning"
+                title: qsTr("Clipboard Overwrite Notice")
+                message: qsTr("Dictation uses clipboard injection on Wayland. Ensure important copied content is saved or a clipboard manager is active.")
+                actionText: qsTr("Dismiss")
+                onActionClicked: {
+                    TextInjectorClient.clipboardBannerDismissed = true;
+                }
+            }
+
+            StatusBanner {
                 visible: SpeechController.activeBackend === SpeechController.TranscriptionBackend.Groq &&
                          !GroqApiClient.apiKeySet
                 bannerType: "warning"

@@ -20,6 +20,9 @@ class TextInjectorClient : public QObject {
     Q_PROPERTY(QString statusMessage READ statusMessage NOTIFY statusMessageChanged FINAL)
     Q_PROPERTY(bool preventClipboardHistory READ preventClipboardHistory WRITE setPreventClipboardHistory NOTIFY preventClipboardHistoryChanged FINAL)
     Q_PROPERTY(int injectionDelay READ injectionDelay WRITE setInjectionDelay NOTIFY injectionDelayChanged FINAL)
+    Q_PROPERTY(bool isKde READ isKde CONSTANT FINAL)
+    Q_PROPERTY(bool clipboardWarningAcknowledged READ clipboardWarningAcknowledged WRITE setClipboardWarningAcknowledged NOTIFY clipboardWarningAcknowledgedChanged FINAL)
+    Q_PROPERTY(bool clipboardBannerDismissed READ clipboardBannerDismissed WRITE setClipboardBannerDismissed NOTIFY clipboardBannerDismissedChanged FINAL)
 
 public:
     explicit TextInjectorClient(QObject* parent = nullptr);
@@ -37,12 +40,19 @@ public:
     int injectionDelay() const;
     void setInjectionDelay(int delayMs);
 
+    bool isKde() const;
+    bool clipboardWarningAcknowledged() const;
+    void setClipboardWarningAcknowledged(bool acknowledged);
+    bool clipboardBannerDismissed() const;
+    void setClipboardBannerDismissed(bool dismissed);
+
     Q_INVOKABLE bool typeText(const QString& text);
     Q_INVOKABLE void cancelPendingInjection();
     Q_INVOKABLE void connectToServer();
     Q_INVOKABLE void disconnectFromServer();
     Q_INVOKABLE void stopDaemon();
     Q_INVOKABLE void restartService();
+    Q_INVOKABLE void resetClipboardWarning();
 
 signals:
     void connectedChanged();
@@ -52,6 +62,8 @@ signals:
     void statusMessageChanged();
     void preventClipboardHistoryChanged();
     void injectionDelayChanged();
+    void clipboardWarningAcknowledgedChanged();
+    void clipboardBannerDismissedChanged();
 
 private:
     bool doInjectText(const QString& text);
@@ -64,4 +76,6 @@ private:
     QString m_statusMessage;
     int m_injectionDelay = 200;
     bool m_preventClipboardHistory = true;
+    bool m_clipboardWarningAcknowledged = false;
+    bool m_clipboardBannerDismissed = false;
 };
