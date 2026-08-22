@@ -129,7 +129,12 @@ void TextInjectorClient::setClipboardWarningAcknowledged(bool acknowledged) {
         QSettings settings;
         settings.setValue(u"Clipboard/WarningAcknowledged"_s, acknowledged);
         emit clipboardWarningAcknowledgedChanged();
+        emit clipboardWarningRequiredChanged();
     }
+}
+
+bool TextInjectorClient::clipboardWarningRequired() const {
+    return !isKde() && !m_clipboardWarningAcknowledged;
 }
 
 bool TextInjectorClient::clipboardBannerDismissed() const {

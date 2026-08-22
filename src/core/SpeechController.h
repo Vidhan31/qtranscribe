@@ -134,7 +134,6 @@ signals:
 
     void requestShowWindow();
     void requestQuitApp();
-    void requestClipboardWarningModal();
     void maxDurationWarningTriggered();
     void llmFallbackWarningTriggered(const QString& warning);
 

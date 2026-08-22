@@ -22,6 +22,7 @@ class TextInjectorClient : public QObject {
     Q_PROPERTY(int injectionDelay READ injectionDelay WRITE setInjectionDelay NOTIFY injectionDelayChanged FINAL)
     Q_PROPERTY(bool isKde READ isKde CONSTANT FINAL)
     Q_PROPERTY(bool clipboardWarningAcknowledged READ clipboardWarningAcknowledged WRITE setClipboardWarningAcknowledged NOTIFY clipboardWarningAcknowledgedChanged FINAL)
+    Q_PROPERTY(bool clipboardWarningRequired READ clipboardWarningRequired NOTIFY clipboardWarningRequiredChanged FINAL)
     Q_PROPERTY(bool clipboardBannerDismissed READ clipboardBannerDismissed WRITE setClipboardBannerDismissed NOTIFY clipboardBannerDismissedChanged FINAL)
 
 public:
@@ -43,6 +44,7 @@ public:
     bool isKde() const;
     bool clipboardWarningAcknowledged() const;
     void setClipboardWarningAcknowledged(bool acknowledged);
+    bool clipboardWarningRequired() const;
     bool clipboardBannerDismissed() const;
     void setClipboardBannerDismissed(bool dismissed);
 
@@ -63,6 +65,7 @@ signals:
     void preventClipboardHistoryChanged();
     void injectionDelayChanged();
     void clipboardWarningAcknowledgedChanged();
+    void clipboardWarningRequiredChanged();
     void clipboardBannerDismissedChanged();
 
 private:

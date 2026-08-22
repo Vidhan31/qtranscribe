@@ -28,6 +28,13 @@ Item {
         id: shortcutGuideDialog
     }
 
+    ClipboardWarningDialog {
+        id: clipboardWarningDialog
+        onAccepted: {
+            SpeechController.startRecording();
+        }
+    }
+
     ScrollView {
         id: speechScrollView
         anchors.fill: parent
@@ -57,13 +64,17 @@ Item {
             }
 
             StatusBanner {
-                visible: !TextInjectorClient.isKde && !TextInjectorClient.clipboardBannerDismissed
+                visible: TextInjectorClient.clipboardWarningRequired && !TextInjectorClient.clipboardBannerDismissed
                 bannerType: "warning"
                 title: qsTr("Clipboard Overwrite Notice")
                 message: qsTr(
                              "Transcribing restores copied text, but non-text items (images, files) are overwritten. Paste and save them first, or use a clipboard manager.")
-                actionText: qsTr("Dismiss")
+                actionText: qsTr("Learn More")
                 onActionClicked: {
+                    clipboardWarningDialog.open();
+                }
+                secondaryActionText: qsTr("Dismiss")
+                onSecondaryActionClicked: {
                     TextInjectorClient.clipboardBannerDismissed = true;
                 }
             }
@@ -305,7 +316,11 @@ Item {
                         }
 
                         onClicked: {
-                            SpeechController.toggleRecording();
+                            if (!SpeechController.recording && TextInjectorClient.clipboardWarningRequired) {
+                                clipboardWarningDialog.open();
+                            } else {
+                                SpeechController.toggleRecording();
+                            }
                         }
                     }
                 }

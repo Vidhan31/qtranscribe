@@ -74,13 +74,6 @@ ApplicationWindow {
         }
     }
 
-    ClipboardWarningDialog {
-        id: clipboardWarningDialog
-        onAccepted: {
-            SpeechController.startRecording();
-        }
-    }
-
     Connections {
         target: SpeechController
         function onRequestShowWindow() {
@@ -90,12 +83,6 @@ ApplicationWindow {
         }
         function onRequestQuitApp() {
             Qt.quit();
-        }
-        function onRequestClipboardWarningModal() {
-            root.show();
-            root.raise();
-            root.requestActivate();
-            clipboardWarningDialog.open();
         }
     }
 
