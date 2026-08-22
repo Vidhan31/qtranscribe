@@ -1,5 +1,7 @@
 #pragma once
 
+#include <filesystem>
+
 #include <sys/types.h>
 
 namespace keyinjectord {
@@ -18,10 +20,14 @@ enum class AuthResult {
     StatFailed,
     NotRegularFile,
     WorldWritable,
-    UntrustedLocation
+    UntrustedLocation,
+    DeletedExecutable
 };
 
 const char* authResultToString(AuthResult result);
+
+bool validateExecutableTopology(const std::filesystem::path& parentExePath, const std::filesystem::path& selfExePath,
+                                AuthResult* outResult = nullptr);
 
 bool authorizeLauncher(int socketFd, AuthResult* outResult = nullptr);
 

@@ -205,6 +205,71 @@ private slots:
         QCOMPARE(res, keyinjectord::AuthResult::NotASocket);
         QVERIFY(!ok);
     }
+
+    void testValidateExecutableTopologyRejectsUntrustedPrefixes() {
+        char selfExeBuf[PATH_MAX];
+        ssize_t len = readlink("/proc/self/exe", selfExeBuf, sizeof(selfExeBuf) - 1);
+        QVERIFY(len > 0);
+        selfExeBuf[len] = '\0';
+        std::filesystem::path selfPath(selfExeBuf);
+
+        keyinjectord::AuthResult res = keyinjectord::AuthResult::Success;
+
+        // Untrusted temporary/volatile prefixes must fail with UntrustedLocation
+        QVERIFY(!keyinjectord::validateExecutableTopology("/tmp/qtranscribe", selfPath, &res));
+        QCOMPARE(res, keyinjectord::AuthResult::UntrustedLocation);
+
+        QVERIFY(!keyinjectord::validateExecutableTopology("/var/tmp/qtranscribe", selfPath, &res));
+        QCOMPARE(res, keyinjectord::AuthResult::UntrustedLocation);
+
+        QVERIFY(!keyinjectord::validateExecutableTopology("/dev/shm/qtranscribe", selfPath, &res));
+        QCOMPARE(res, keyinjectord::AuthResult::UntrustedLocation);
+
+        QVERIFY(!keyinjectord::validateExecutableTopology("/run/user/1000/qtranscribe", selfPath, &res));
+        QCOMPARE(res, keyinjectord::AuthResult::UntrustedLocation);
+    }
+
+    void testValidateExecutableTopologyRejectsDeletedExecutable() {
+        char selfExeBuf[PATH_MAX];
+        ssize_t len = readlink("/proc/self/exe", selfExeBuf, sizeof(selfExeBuf) - 1);
+        QVERIFY(len > 0);
+        selfExeBuf[len] = '\0';
+        std::filesystem::path selfPath(selfExeBuf);
+
+        keyinjectord::AuthResult res = keyinjectord::AuthResult::Success;
+        std::filesystem::path deletedParent = "/usr/bin/qtranscribe (deleted)";
+        QVERIFY(!keyinjectord::validateExecutableTopology(deletedParent, selfPath, &res));
+        QCOMPARE(res, keyinjectord::AuthResult::DeletedExecutable);
+
+        std::filesystem::path deletedSelf = std::string(selfExeBuf) + " (deleted)";
+        QVERIFY(!keyinjectord::validateExecutableTopology(selfPath, deletedSelf, &res));
+        QCOMPARE(res, keyinjectord::AuthResult::DeletedExecutable);
+    }
+
+    void testValidateExecutableTopologyRejectsUnauthorizedName() {
+        char selfExeBuf[PATH_MAX];
+        ssize_t len = readlink("/proc/self/exe", selfExeBuf, sizeof(selfExeBuf) - 1);
+        QVERIFY(len > 0);
+        selfExeBuf[len] = '\0';
+        std::filesystem::path selfPath(selfExeBuf);
+
+        keyinjectord::AuthResult res = keyinjectord::AuthResult::Success;
+        std::filesystem::path badName = selfPath.parent_path() / "unauthorized_binary";
+        QVERIFY(!keyinjectord::validateExecutableTopology(badName, selfPath, &res));
+        QCOMPARE(res, keyinjectord::AuthResult::UnauthorizedExecutable);
+    }
+
+    void testValidateExecutableTopologyAcceptsSelfInvocation() {
+        char selfExeBuf[PATH_MAX];
+        ssize_t len = readlink("/proc/self/exe", selfExeBuf, sizeof(selfExeBuf) - 1);
+        QVERIFY(len > 0);
+        selfExeBuf[len] = '\0';
+        std::filesystem::path selfPath(selfExeBuf);
+
+        keyinjectord::AuthResult res = keyinjectord::AuthResult::InvalidFd;
+        QVERIFY(keyinjectord::validateExecutableTopology(selfPath, selfPath, &res));
+        QCOMPARE(res, keyinjectord::AuthResult::Success);
+    }
 };
 
 QTEST_GUILESS_MAIN(TestIpcServer)
