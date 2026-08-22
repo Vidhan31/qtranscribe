@@ -230,8 +230,8 @@ Item {
         }
 
         PreferenceCard {
-            title: qsTr("Clipboard Privacy")
-            description: qsTr("Control clipboard behavior when falling back to clipboard paste")
+            title: qsTr("Clipboard Privacy & Behavior")
+            description: qsTr("Control clipboard privacy and text injection behavior on Wayland")
 
             PreferenceSwitch {
                 id: clipboardHistorySwitch
@@ -241,6 +241,50 @@ Item {
                 checked: TextInjectorClient.preventClipboardHistory
                 onToggled: {
                     TextInjectorClient.preventClipboardHistory = clipboardHistorySwitch.checked;
+                }
+            }
+
+            PreferenceDivider {
+                visible: !TextInjectorClient.isKde
+            }
+
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: Theme.spacingSm
+                visible: !TextInjectorClient.isKde
+
+                StyledText {
+                    text: qsTr("Wayland Clipboard Guidance")
+                    variant: "body"
+                    customWeight: Font.Medium
+                }
+
+                StyledText {
+                    text: qsTr(
+                              "On desktop environments without integrated clipboard history (like GNOME or wlroots compositors), dictation injects text via clipboard paste. QTranscribe automatically restores copied text, but non-text clipboard items (such as images, screenshots, or files) cannot be restored and will be lost unless you paste and save them first or use a clipboard manager extension.")
+                    variant: "caption"
+                    colorRole: "secondary"
+                    wrapMode: Text.WordWrap
+                    Layout.fillWidth: true
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: Theme.spacingSm
+
+                    StyledButton {
+                        id: resetWarningBtn
+                        text: qsTr("Reset Clipboard Warning")
+                        variant: "flat"
+                        size: "small"
+                        onClicked: {
+                            TextInjectorClient.resetClipboardWarning();
+                        }
+                    }
+
+                    Item {
+                        Layout.fillWidth: true
+                    }
                 }
             }
         }

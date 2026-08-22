@@ -27,6 +27,8 @@ TextInjectorClient::TextInjectorClient(QObject* parent)
     QSettings settings;
     m_preventClipboardHistory = settings.value(u"Clipboard/PreventHistory"_s, true).toBool();
     m_injectionDelay = settings.value(u"Typing/PreInjectionDelayMs"_s, 200).toInt();
+    m_clipboardWarningAcknowledged = settings.value(u"Clipboard/WarningAcknowledged"_s, false).toBool();
+    m_clipboardBannerDismissed = settings.value(u"Clipboard/BannerDismissed"_s, false).toBool();
 
     connect(m_connector, &DaemonConnector::connectedChanged, this, &TextInjectorClient::connectedChanged);
     connect(m_connector, &DaemonConnector::hasFatalErrorChanged, this, &TextInjectorClient::hasFatalErrorChanged);
@@ -96,6 +98,61 @@ void TextInjectorClient::setInjectionDelay(int delayMs) {
         settings.setValue(u"Typing/PreInjectionDelayMs"_s, delayMs);
         emit injectionDelayChanged();
     }
+}
+
+bool TextInjectorClient::isKde() const {
+    const QString xdgCurrentDesktop = qEnvironmentVariable("XDG_CURRENT_DESKTOP");
+    const QString xdgSessionDesktop = qEnvironmentVariable("XDG_SESSION_DESKTOP");
+    const QString kdeSession = qEnvironmentVariable("KDE_FULL_SESSION");
+
+    if (!kdeSession.isEmpty()) {
+        return true;
+    }
+
+    if (xdgCurrentDesktop.contains(u"kde"_s, Qt::CaseInsensitive) ||
+        xdgCurrentDesktop.contains(u"plasma"_s, Qt::CaseInsensitive) ||
+        xdgSessionDesktop.contains(u"kde"_s, Qt::CaseInsensitive) ||
+        xdgSessionDesktop.contains(u"plasma"_s, Qt::CaseInsensitive)) {
+        return true;
+    }
+
+    return false;
+}
+
+bool TextInjectorClient::clipboardWarningAcknowledged() const {
+    return m_clipboardWarningAcknowledged;
+}
+
+void TextInjectorClient::setClipboardWarningAcknowledged(bool acknowledged) {
+    if (m_clipboardWarningAcknowledged != acknowledged) {
+        m_clipboardWarningAcknowledged = acknowledged;
+        QSettings settings;
+        settings.setValue(u"Clipboard/WarningAcknowledged"_s, acknowledged);
+        emit clipboardWarningAcknowledgedChanged();
+        emit clipboardWarningRequiredChanged();
+    }
+}
+
+bool TextInjectorClient::clipboardWarningRequired() const {
+    return !isKde() && !m_clipboardWarningAcknowledged;
+}
+
+bool TextInjectorClient::clipboardBannerDismissed() const {
+    return m_clipboardBannerDismissed;
+}
+
+void TextInjectorClient::setClipboardBannerDismissed(bool dismissed) {
+    if (m_clipboardBannerDismissed != dismissed) {
+        m_clipboardBannerDismissed = dismissed;
+        QSettings settings;
+        settings.setValue(u"Clipboard/BannerDismissed"_s, dismissed);
+        emit clipboardBannerDismissedChanged();
+    }
+}
+
+void TextInjectorClient::resetClipboardWarning() {
+    setClipboardWarningAcknowledged(false);
+    setClipboardBannerDismissed(false);
 }
 
 void TextInjectorClient::cancelPendingInjection() {

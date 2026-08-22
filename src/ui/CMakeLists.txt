@@ -41,6 +41,7 @@ qt_add_qml_module(qtranscribe_ui
         MetricCard.qml
         QuotaMeter.qml
         ShortcutGuideDialog.qml
+        ClipboardWarningDialog.qml
         controls/StyledButton.qml
         controls/StyledCard.qml
         controls/StyledComboBox.qml
