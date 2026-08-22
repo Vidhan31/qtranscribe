@@ -76,6 +76,9 @@ ApplicationWindow {
 
     ClipboardWarningDialog {
         id: clipboardWarningDialog
+        onAccepted: {
+            SpeechController.startRecording();
+        }
     }
 
     Connections {

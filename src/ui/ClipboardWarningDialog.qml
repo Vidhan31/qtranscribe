@@ -35,71 +35,87 @@ Dialog {
         }
     }
 
-    ColumnLayout {
-        width: parent.width
-        spacing: Theme.spacingMd
+    contentItem: ScrollView {
+        id: scrollView
+        implicitHeight: Math.min(warningLayout.implicitHeight, 380)
+        contentWidth: availableWidth
+        clip: true
 
-        StyledText {
-            text: qsTr("QTranscribe uses clipboard paste injection to insert transcribed speech directly into your active applications on Wayland.")
-            variant: "body"
-            wrapMode: Text.WordWrap
-            Layout.fillWidth: true
-        }
+        ColumnLayout {
+            id: warningLayout
+            width: scrollView.availableWidth
+            spacing: Theme.spacingMd
 
-        Rectangle {
-            Layout.fillWidth: true
-            implicitHeight: warningContentLayout.implicitHeight + (Theme.spacingMd * 2)
-            color: Theme.statusBgColor(Theme.colorWarning, 0.12)
-            border.color: Theme.statusBorderColor(Theme.colorWarning, 0.4)
-            border.width: 1
-            radius: Theme.radiusSm
+            StyledText {
+                text: qsTr(
+                          "QTranscribe uses clipboard paste injection to insert transcribed speech directly into your active applications on Wayland.")
+                variant: "body"
+                wrapMode: Text.WordWrap
+                Layout.fillWidth: true
+            }
 
-            RowLayout {
-                id: warningContentLayout
-                anchors.fill: parent
-                anchors.margins: Theme.spacingMd
-                spacing: Theme.spacingSm
+            Rectangle {
+                Layout.fillWidth: true
+                implicitHeight: warningContentLayout.implicitHeight + (Theme.spacingMd * 2)
+                color: Theme.statusBgColor(Theme.colorWarning, 0.12)
+                border.color: Theme.statusBorderColor(Theme.colorWarning, 0.4)
+                border.width: 1
+                radius: Theme.radiusSm
 
-                StyledIcon {
-                    source: "qrc:/qt/qml/QTranscribe/assets/icons/info.svg"
-                    color: Theme.colorWarning
-                    size: 22
-                    Layout.alignment: Qt.AlignTop
-                }
+                RowLayout {
+                    id: warningContentLayout
+                    anchors.fill: parent
+                    anchors.margins: Theme.spacingMd
+                    spacing: Theme.spacingSm
 
-                ColumnLayout {
-                    Layout.fillWidth: true
-                    spacing: 4
-
-                    StyledText {
-                        text: qsTr("Clipboard Overwrite Risk")
-                        customWeight: Font.DemiBold
-                        variant: "body"
-                        customColor: Theme.colorWarning
+                    StyledIcon {
+                        source: "qrc:/qt/qml/QTranscribe/assets/icons/info.svg"
+                        color: Theme.colorWarning
+                        size: 22
+                        Layout.alignment: Qt.AlignTop
                     }
 
-                    StyledText {
-                        text: qsTr("Unless your desktop environment maintains a clipboard history manager (such as a clipboard extension or daemon), transcribing speech may overwrite your currently copied text or media.")
-                        variant: "caption"
-                        colorRole: "secondary"
-                        wrapMode: Text.WordWrap
+                    ColumnLayout {
                         Layout.fillWidth: true
+                        spacing: 4
+
+                        StyledText {
+                            text: qsTr("Clipboard Overwrite Risk")
+                            customWeight: Font.DemiBold
+                            variant: "body"
+                            customColor: Theme.colorWarning
+                        }
+
+                        StyledText {
+                            text: qsTr(
+                                      "Unless your desktop environment maintains a clipboard history manager (such as a clipboard extension or daemon), transcribing speech may overwrite your currently copied text or media.")
+                            variant: "caption"
+                            colorRole: "secondary"
+                            wrapMode: Text.WordWrap
+                            Layout.fillWidth: true
+                        }
                     }
                 }
             }
-        }
 
-        StyledText {
-            text: qsTr("Before starting dictation, please make sure you save any important copied content, or consider installing a clipboard manager extension for your desktop environment.")
-            variant: "caption"
-            colorRole: "secondary"
-            wrapMode: Text.WordWrap
-            Layout.fillWidth: true
+            StyledText {
+                text: qsTr(
+                          "Before starting dictation, please make sure you save any important copied content, or consider installing a clipboard manager extension for your desktop environment.")
+                variant: "caption"
+                colorRole: "secondary"
+                wrapMode: Text.WordWrap
+                Layout.fillWidth: true
+            }
         }
+    }
+
+    footer: Rectangle {
+        implicitHeight: 52
+        color: "transparent"
 
         RowLayout {
-            Layout.fillWidth: true
-            Layout.topMargin: Theme.spacingSm
+            anchors.fill: parent
+            anchors.margins: Theme.spacingMd
 
             Item {
                 Layout.fillWidth: true

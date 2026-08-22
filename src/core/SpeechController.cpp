@@ -359,7 +359,8 @@ void SpeechController::startRecording() {
     }
 
     if (m_injector && !m_injector->isKde() && !m_injector->clipboardWarningAcknowledged()) {
-        qCDebug(lcSpeech) << "SpeechController: Clipboard warning not acknowledged on non-KDE desktop, requesting dialog";
+        qCDebug(lcSpeech)
+            << "SpeechController: Clipboard warning not acknowledged on non-KDE desktop, requesting dialog";
         emit requestShowWindow();
         emit requestClipboardWarningModal();
         return;

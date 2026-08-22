@@ -260,7 +260,8 @@ Item {
                 }
 
                 StyledText {
-                    text: qsTr("On desktop environments without integrated clipboard history (like GNOME or wlroots compositors), direct typing injects text via clipboard paste. This may overwrite your copied data unless a clipboard manager extension is active.")
+                    text: qsTr(
+                              "On desktop environments without integrated clipboard history (like GNOME or wlroots compositors), direct typing injects text via clipboard paste. This may overwrite your copied data unless a clipboard manager extension is active.")
                     variant: "caption"
                     colorRole: "secondary"
                     wrapMode: Text.WordWrap
