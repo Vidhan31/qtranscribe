@@ -81,11 +81,6 @@ jobs:
             file: packaging/rpm/Dockerfile.rpm
             outdir: dist/rpm
             artifact: package-rpm
-          - target: tarball
-            name: Portable Tarball (.tar.gz)
-            file: packaging/tarball/Dockerfile.tarball
-            outdir: dist/tarball
-            artifact: package-tarball
 
     steps:
       - name: Checkout repository

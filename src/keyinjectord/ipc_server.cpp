@@ -4,7 +4,6 @@
 
 #include "protocol.h"
 
-#include <algorithm>
 #include <cerrno>
 #include <cstdint>
 #include <cstdio>
@@ -14,17 +13,19 @@
 #include <sys/eventfd.h>
 #include <sys/signalfd.h>
 #include <sys/socket.h>
-#include <sys/stat.h>
-#include <sys/un.h>
 #include <poll.h>
 #include <signal.h>
 #include <unistd.h>
 
 namespace keyinjectord {
 
-IpcServer::IpcServer(const std::string& socketPath, IDevice& device)
-    : m_socketPath(socketPath)
+IpcServer::IpcServer(int socketFd, IDevice& device)
+    : m_socketFd(socketFd)
     , m_device(device) {
+    if (m_socketFd < 0) {
+        throw std::invalid_argument("Invalid socket file descriptor passed to IpcServer");
+    }
+
     // Create signalfd for SIGINT/SIGTERM — replaces the self-pipe trick.
     // Signals must already be blocked via sigprocmask() before construction.
     sigset_t mask;
@@ -42,56 +43,26 @@ IpcServer::IpcServer(const std::string& socketPath, IDevice& device)
         throw std::runtime_error(std::string("eventfd() failed: ") + std::strerror(errno));
     }
 
-    unlink(m_socketPath.c_str());
-
-    m_listenFd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
-    if (m_listenFd < 0) {
-        throw std::runtime_error(std::string("socket() failed: ") + std::strerror(errno));
-    }
-
-    struct sockaddr_un addr {};
-    addr.sun_family = AF_UNIX;
-    if (m_socketPath.size() >= sizeof(addr.sun_path)) {
-        throw std::runtime_error("Socket path too long: " + m_socketPath);
-    }
-    std::strncpy(addr.sun_path, m_socketPath.c_str(), sizeof(addr.sun_path) - 1);
-
-    if (bind(m_listenFd, reinterpret_cast<struct sockaddr*>(&addr), sizeof(addr)) != 0) {
-        throw std::runtime_error(std::string("bind() failed on ") + m_socketPath + ": " + std::strerror(errno));
-    }
-
-    // Restrict socket access to owner only (defense-in-depth on top of XDG_RUNTIME_DIR permissions)
-    if (fchmod(m_listenFd, 0600) != 0) {
-        KEYINJECTORD_LOG_ERROR("fchmod(0600) on socket fd failed: %s", std::strerror(errno));
-    }
-
-    if (listen(m_listenFd, 5) != 0) {
-        throw std::runtime_error(std::string("listen() failed: ") + std::strerror(errno));
-    }
-
-    KEYINJECTORD_LOG_INFO("IPC server listening on %s", m_socketPath.c_str());
+    KEYINJECTORD_LOG_INFO("IPC server initialized with inherited socket descriptor (fd=%d)", m_socketFd);
 }
 
 IpcServer::~IpcServer() {
-    for (int fd : m_clientFds) {
-        close(fd);
+    if (m_socketFd >= 0) {
+        close(m_socketFd);
+        m_socketFd = -1;
     }
-
-    if (m_listenFd >= 0) {
-        close(m_listenFd);
-    }
-
-    unlink(m_socketPath.c_str());
 
     if (m_signalFd >= 0) {
         close(m_signalFd);
+        m_signalFd = -1;
     }
 
     if (m_stopEventFd >= 0) {
         close(m_stopEventFd);
+        m_stopEventFd = -1;
     }
 
-    KEYINJECTORD_LOG_INFO("IPC server shut down, socket removed");
+    KEYINJECTORD_LOG_INFO("IPC server shut down");
 }
 
 void IpcServer::stop() {
@@ -101,26 +72,14 @@ void IpcServer::stop() {
     }
 }
 
-void IpcServer::disconnectClient(size_t clientIdx) {
-    int fd = m_clientFds[clientIdx];
-    KEYINJECTORD_LOG_DEBUG("Client disconnected (fd=%d)", fd);
-    close(fd);
-    m_clientFds.erase(m_clientFds.begin() + clientIdx);
-}
-
 void IpcServer::run() {
     KEYINJECTORD_LOG_DEBUG("Event loop started");
 
     while (true) {
         m_pollFds.clear();
-        m_pollFds.reserve(3 + m_clientFds.size());
-
         m_pollFds.push_back({m_signalFd, POLLIN, 0});
         m_pollFds.push_back({m_stopEventFd, POLLIN, 0});
-        m_pollFds.push_back({m_listenFd, POLLIN, 0});
-        for (int cfd : m_clientFds) {
-            m_pollFds.push_back({cfd, POLLIN, 0});
-        }
+        m_pollFds.push_back({m_socketFd, POLLIN | POLLHUP | POLLERR, 0});
 
         int ret = poll(m_pollFds.data(), m_pollFds.size(), -1);
         if (ret < 0) {
@@ -147,55 +106,32 @@ void IpcServer::run() {
             break;
         }
 
-        // Accept new client connections with peer credential verification
-        if (m_pollFds[2].revents & POLLIN) {
-            int clientFd = accept4(m_listenFd, nullptr, nullptr, SOCK_CLOEXEC);
-            if (clientFd >= 0) {
-                if (m_clientFds.size() >= kMaxClients) {
-                    KEYINJECTORD_LOG_WARN("Max client connections reached (%zu/%zu), rejecting connection fd=%d",
-                                          m_clientFds.size(), kMaxClients, clientFd);
-                    close(clientFd);
-                } else {
-                    // Verify peer credentials — reject connections from other users
-                    struct ucred peerCreds {};
-                    socklen_t credLen = sizeof(peerCreds);
-                    if (getsockopt(clientFd, SOL_SOCKET, SO_PEERCRED, &peerCreds, &credLen) == 0) {
-                        if (peerCreds.uid != getuid()) {
-                            KEYINJECTORD_LOG_ERROR("Rejected connection from UID %d (expected %d), PID %d",
-                                                   peerCreds.uid, getuid(), peerCreds.pid);
-                            close(clientFd);
-                        } else {
-                            KEYINJECTORD_LOG_DEBUG("Client connected (fd=%d, pid=%d)", clientFd, peerCreds.pid);
-                            m_clientFds.push_back(clientFd);
-                        }
-                    } else {
-                        KEYINJECTORD_LOG_ERROR("getsockopt(SO_PEERCRED) failed: %s — rejecting connection",
-                                               std::strerror(errno));
-                        close(clientFd);
-                    }
-                }
-            }
-        }
-
-        for (size_t i = m_pollFds.size() - 1; i >= 3; --i) {
-            size_t clientIdx = i - 3;
-            if (m_pollFds[i].revents & (POLLIN | POLLHUP | POLLERR)) {
-                handleClient(static_cast<int>(clientIdx));
+        // Check client socket activity or disconnection
+        if (m_pollFds[2].revents & (POLLIN | POLLHUP | POLLERR)) {
+            if (!handleClientRead()) {
+                break;
             }
         }
     }
 
     KEYINJECTORD_LOG_DEBUG("Event loop exited");
+    if (m_socketFd >= 0) {
+        close(m_socketFd);
+        m_socketFd = -1;
+    }
 }
 
-void IpcServer::handleClient(int clientIdx) {
-    int fd = m_clientFds[clientIdx];
+bool IpcServer::handleClientRead() {
     uint8_t buf[kMaxBufferSize];
 
-    ssize_t n = read(fd, buf, sizeof(buf));
+    ssize_t n = read(m_socketFd, buf, sizeof(buf));
     if (n <= 0) {
-        disconnectClient(clientIdx);
-        return;
+        if (n == 0) {
+            KEYINJECTORD_LOG_INFO("Peer disconnected (EOF), shutting down daemon");
+        } else {
+            KEYINJECTORD_LOG_ERROR("read() error on socket fd=%d: %s", m_socketFd, std::strerror(errno));
+        }
+        return false;
     }
 
     for (ssize_t i = 0; i < n; ++i) {
@@ -218,20 +154,21 @@ void IpcServer::handleClient(int clientIdx) {
                 status = ResponseStatus::Ok;
                 break;
             default:
-                KEYINJECTORD_LOG_ERROR("Unknown IPC opcode: 0x%02X from fd=%d", opcodeRaw, fd);
+                KEYINJECTORD_LOG_ERROR("Unknown IPC opcode: 0x%02X from fd=%d", opcodeRaw, m_socketFd);
                 status = ResponseStatus::UnknownCmd;
                 shouldDisconnect = true;
                 break;
         }
 
         uint8_t respByte = static_cast<uint8_t>(status);
-        [[maybe_unused]] auto w = write(fd, &respByte, sizeof(respByte));
+        [[maybe_unused]] auto w = write(m_socketFd, &respByte, sizeof(respByte));
 
         if (shouldDisconnect) {
-            disconnectClient(clientIdx);
-            return;
+            return false;
         }
     }
+
+    return true;
 }
 
 } // namespace keyinjectord

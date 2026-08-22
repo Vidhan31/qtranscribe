@@ -3,6 +3,9 @@
 #include "logging.h"
 #include "uinput_device.h"
 
+#include "launcher_auth.h"
+
+#include <cerrno>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -10,32 +13,21 @@
 #include <string>
 
 #include <sys/prctl.h>
-#include <sys/stat.h>
 #include <fcntl.h>
 #include <signal.h>
 #include <unistd.h>
 
 namespace {
 
-std::string getSocketPath() {
-    const char* xdgRuntime = std::getenv("XDG_RUNTIME_DIR");
-    if (xdgRuntime && xdgRuntime[0] != '\0') {
-        return std::string(xdgRuntime) + "/keyinjectord.sock";
-    }
-
-    // Secure fallback: user-isolated directory in /tmp with 0700 permissions
-    std::string userDir = "/tmp/qtranscribe-" + std::to_string(getuid());
-    mkdir(userDir.c_str(), 0700);
-    return userDir + "/keyinjectord.sock";
-}
-
 void printUsage(const char* progName) {
     std::fprintf(stderr,
-                 "Usage: %s [OPTIONS]\n"
+                 "Usage: %s --socket-fd <FD> [OPTIONS]\n"
+                 "\n"
+                 "Required:\n"
+                 "  --socket-fd <FD>   Inherited UNIX domain socket file descriptor\n"
                  "\n"
                  "Options:\n"
                  "  --delay-ms <N>     Inter-key delay in milliseconds (default: 18)\n"
-                 "  --socket-path <P>  Unix socket path (default: $XDG_RUNTIME_DIR/keyinjectord.sock)\n"
                  "  -v, --verbose      Enable verbose output logging\n"
                  "  --help             Show this help\n"
                  "\n"
@@ -62,17 +54,16 @@ int main(int argc, char* argv[]) {
     }
 
     int delayMs = 18;
+    int socketFd = -1;
     [[maybe_unused]] bool verbose = false;
 
-    std::string socketPath = getSocketPath();
-
     for (int i = 1; i < argc; ++i) {
-        if (std::strcmp(argv[i], "--delay-ms") == 0 && i + 1 < argc) {
+        if (std::strcmp(argv[i], "--socket-fd") == 0 && i + 1 < argc) {
+            socketFd = std::atoi(argv[++i]);
+        } else if (std::strcmp(argv[i], "--delay-ms") == 0 && i + 1 < argc) {
             delayMs = std::atoi(argv[++i]);
             if (delayMs < 1)
                 delayMs = 1;
-        } else if (std::strcmp(argv[i], "--socket-path") == 0 && i + 1 < argc) {
-            socketPath = argv[++i];
         } else if (std::strcmp(argv[i], "--verbose") == 0 || std::strcmp(argv[i], "-v") == 0) {
             verbose = true;
         } else if (std::strcmp(argv[i], "--help") == 0) {
@@ -85,7 +76,17 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    KEYINJECTORD_LOG_DEBUG("Starting with delay=%dms, socket=%s", delayMs, socketPath.c_str());
+    if (socketFd < 0) {
+        KEYINJECTORD_LOG_ERROR("Missing required option: --socket-fd <FD>");
+        printUsage(argv[0]);
+        return 1;
+    }
+
+    if (!keyinjectord::authorizeLauncher(socketFd)) {
+        return 1;
+    }
+
+    KEYINJECTORD_LOG_DEBUG("Starting with delay=%dms, socket-fd=%d", delayMs, socketFd);
 
     // Open /dev/uinput with CAP_DAC_OVERRIDE raised temporarily
     int uinputFd;
@@ -115,7 +116,7 @@ int main(int argc, char* argv[]) {
     try {
         keyinjectord::UinputDevice device(uinputFd, delayMs);
 
-        keyinjectord::IpcServer server(socketPath, device);
+        keyinjectord::IpcServer server(socketFd, device);
 
         server.run();
 

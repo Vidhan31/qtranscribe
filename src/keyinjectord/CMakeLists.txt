@@ -23,6 +23,8 @@ add_executable(keyinjectord
     capability.cpp
     uinput_device.cpp
     ipc_server.cpp
+    launcher_auth.cpp
+    launcher_auth.h
     device_interface.h
     logging.h
     protocol.h
@@ -32,6 +34,11 @@ target_link_libraries(keyinjectord PRIVATE
     PkgConfig::LIBEVDEV
     PkgConfig::LIBCAP
 )
+
+option(KEYINJECTORD_DEV_AUTH "Enable relaxed launcher authorization for development/testing" OFF)
+if(CMAKE_BUILD_TYPE STREQUAL "Debug" OR KEYINJECTORD_DEV_AUTH)
+    target_compile_definitions(keyinjectord PRIVATE KEYINJECTORD_DEV_AUTH=1)
+endif()
 
 if(PROJECT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)
     include(GNUInstallDirs)

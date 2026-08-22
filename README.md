@@ -64,20 +64,6 @@ To uninstall:
 sudo pacman -R qtranscribe
 ```
 
-### Portable tarball (`.tar.gz`)
-
-```bash
-# 1. Extract archive
-tar -xzf QTranscribe-*-Linux-x86_64.tar.gz
-cd QTranscribe-*-Linux-x86_64
-
-# 2. Grant uinput permission to helper daemon
-sudo setcap "cap_dac_override+p" bin/keyinjectord
-
-# 3. Launch
-./bin/qtranscribe
-```
-
 ---
 
 ## Desktop environment support and Wayland notes
@@ -100,7 +86,7 @@ Tested on modern Wayland compositors:
     1. Open **Settings** -> **Keyboard** -> **Keyboard Shortcuts**.
     2. Add a custom shortcut (for example `Ctrl+Shift+Space` or `Super+Space`).
     3. Set the command to: `qtranscribe --toggle`
-- **Key injection permissions (`keyinjectord`).** Wayland prevents unprivileged applications from injecting input events into other windows. To type at the cursor, `keyinjectord` writes to `/dev/uinput`. It requests `cap_dac_override` only to open `/dev/uinput` during initialization, immediately drops all capabilities permanently, and locks the process using `PR_SET_NO_NEW_PRIVS` (see [`src/keyinjectord/capability.cpp`](src/keyinjectord/capability.cpp)).
+- **Key injection permissions (`keyinjectord`).** Wayland prevents unprivileged applications from injecting input events into other windows. To type at the cursor, `keyinjectord` writes to `/dev/uinput`. It requests `cap_dac_override` only to open `/dev/uinput` during initialization, immediately drops all capabilities permanently, and locks the process using `PR_SET_NO_NEW_PRIVS` (see [`src/keyinjectord/capability.cpp`](src/keyinjectord/capability.cpp)). IPC between `qtranscribe` and `keyinjectord` occurs strictly over an anonymous `socketpair()` passed via an inherited file descriptor, preventing discovery or access by other local processes.
 - **Backend service.** Audio is sent to Groq's cloud API for transcription. For fully offline dictation without network requests, consider tools built on local `whisper.cpp`.
 
 ---
@@ -140,27 +126,27 @@ Tested on modern Wayland compositors:
 - QtKeychain (Qt6)
 - `libevdev` and `libcap` development headers
 
-### 1. Build `keyinjectord`
-Build the daemon once and grant required capabilities. Because it builds in its own directory (`build-keyinjectord/`), rebuilding the GUI will not overwrite or clear the capability bit:
+### 1. Configure /dev/uinput permissions (for local builds / portable runs)
+To allow key injection without root capabilities, ensure your user is in the `input` group:
 
 ```bash
-cmake -S src/keyinjectord -B build-keyinjectord -G Ninja && cmake --build build-keyinjectord
-sudo setcap "cap_dac_override+p" build-keyinjectord/keyinjectord
+echo 'KERNEL=="uinput", GROUP="input", MODE="0660"' | sudo tee /etc/udev/rules.d/99-uinput.rules
+sudo udevadm control --reload-rules && sudo udevadm trigger
+sudo usermod -aG input $USER
 ```
 
-### 2. Build GUI application
-The `linux-qt6-debug` preset builds the GUI app and connects to `build-keyinjectord/keyinjectord`:
+### 2. Build application & daemon
+The `linux-qt6-debug` preset builds both `qtranscribe` and `keyinjectord` colocated in `build/`:
 
 ```bash
 cmake --preset linux-qt6-debug && cmake --build build
 ```
 
 ### 3. Full release build
-To build both targets together:
+To build an optimized release:
 
 ```bash
-cmake --preset linux-qt6-release && cmake --build --preset build-release
-sudo setcap "cap_dac_override+p" build-release/src/keyinjectord/keyinjectord
+cmake --preset linux-qt6-release && cmake --build build-release
 ```
 
 ---
@@ -215,21 +201,9 @@ sudo pacman -U ./dist/arch/qtranscribe-1.0.0-1-x86_64.pkg.tar.zst
 </details>
 
 <details>
-<summary><strong>Portable tarball (.tar.gz)</strong></summary>
-
-```bash
-# Build tarball (outputs to dist/tarball/):
-./packaging/tarball/build-tarball.sh 1.0.0
-
-# Or locally with CPack:
-cmake --preset linux-qt6-release && cmake --build --preset build-release --target package
-```
-</details>
-
-<details>
 <summary><strong>CI / release builds</strong></summary>
 
-Pre-built packages (`.deb`, `.rpm`, `.pkg.tar.zst`, `.tar.gz`) and SHA-256 checksums are generated automatically on release tags.
+Pre-built packages (`.deb`, `.rpm`, `.pkg.tar.zst`) and SHA-256 checksums are generated automatically on release tags.
 </details>
 
 ---
@@ -238,7 +212,7 @@ Pre-built packages (`.deb`, `.rpm`, `.pkg.tar.zst`, `.tar.gz`) and SHA-256 check
 
 - **Nothing types into the target field:**
   - Verify the target input field is active and focused.
-  - If running from source or a portable tarball, verify capability permissions: `sudo setcap "cap_dac_override+p" path/to/keyinjectord`. Distro packages configure this automatically.
+  - If running from source build, verify your user is in the `input` group or has access to `/dev/uinput`. Distro packages configure root capabilities automatically.
   - Run `qtranscribe` in a terminal to inspect diagnostic logs.
 - **Shortcuts do not trigger on COSMIC or GNOME 46:**
   - These compositors do not implement the XDG Global Shortcuts portal. Configure a custom shortcut in system settings mapped to `qtranscribe --toggle`.

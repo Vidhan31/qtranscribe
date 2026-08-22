@@ -96,9 +96,13 @@ add_test(
     COMMAND test_http_request_runner
 )
 
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(LIBCAP REQUIRED IMPORTED_TARGET libcap)
+
 qt_add_executable(test_ipc_server
     test_ipc_server.cpp
     ${CMAKE_SOURCE_DIR}/src/keyinjectord/ipc_server.cpp
+    ${CMAKE_SOURCE_DIR}/src/keyinjectord/launcher_auth.cpp
 )
 
 target_link_libraries(test_ipc_server
@@ -106,12 +110,18 @@ target_link_libraries(test_ipc_server
         Qt6::Core
         Qt6::Test
         Qt6::Network
+        PkgConfig::LIBCAP
 )
 
 target_include_directories(test_ipc_server
     PRIVATE
         ${CMAKE_SOURCE_DIR}/src
         ${CMAKE_SOURCE_DIR}/src/keyinjectord
+)
+
+target_compile_definitions(test_ipc_server
+    PRIVATE
+        KEYINJECTORD_DEV_AUTH=1
 )
 
 add_test(
