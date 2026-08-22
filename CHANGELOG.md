@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- Hardened `keyinjectord` launcher authorization to strictly enforce root ownership for production binaries and directories, preventing user-space launcher forgery.
+- Restricted test executables to development builds via compile-time gating (`KEYINJECTORD_DEV_AUTH`).
+
+### Removed
+- Removed standalone portable tarball packaging (`.tar.gz`) to eliminate unprivileged capability vulnerability vectors and ensure distribution exclusively via system package managers (`.deb`, `.rpm`, Arch).
+
 ## [1.1.0] - 2026-08-22
 
 ### Added

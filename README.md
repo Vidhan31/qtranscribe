@@ -64,18 +64,6 @@ To uninstall:
 sudo pacman -R qtranscribe
 ```
 
-### Portable tarball (`.tar.gz`)
-Ensure your user has `/dev/uinput` permissions (see udev rule in Building from source below):
-
-```bash
-# 1. Extract archive
-tar -xzf QTranscribe-*-Linux-x86_64.tar.gz
-cd QTranscribe-*-Linux-x86_64
-
-# 2. Launch
-./bin/qtranscribe
-```
-
 ---
 
 ## Desktop environment support and Wayland notes
@@ -213,21 +201,9 @@ sudo pacman -U ./dist/arch/qtranscribe-1.0.0-1-x86_64.pkg.tar.zst
 </details>
 
 <details>
-<summary><strong>Portable tarball (.tar.gz)</strong></summary>
-
-```bash
-# Build tarball (outputs to dist/tarball/):
-./packaging/tarball/build-tarball.sh 1.0.0
-
-# Or locally with CPack:
-cmake --preset linux-qt6-release && cmake --build --preset build-release --target package
-```
-</details>
-
-<details>
 <summary><strong>CI / release builds</strong></summary>
 
-Pre-built packages (`.deb`, `.rpm`, `.pkg.tar.zst`, `.tar.gz`) and SHA-256 checksums are generated automatically on release tags.
+Pre-built packages (`.deb`, `.rpm`, `.pkg.tar.zst`) and SHA-256 checksums are generated automatically on release tags.
 </details>
 
 ---
@@ -236,7 +212,7 @@ Pre-built packages (`.deb`, `.rpm`, `.pkg.tar.zst`, `.tar.gz`) and SHA-256 check
 
 - **Nothing types into the target field:**
   - Verify the target input field is active and focused.
-  - If running from source or portable tarball, verify your user is in the `input` group or has access to `/dev/uinput`. Distro packages configure root capabilities automatically.
+  - If running from source build, verify your user is in the `input` group or has access to `/dev/uinput`. Distro packages configure root capabilities automatically.
   - Run `qtranscribe` in a terminal to inspect diagnostic logs.
 - **Shortcuts do not trigger on COSMIC or GNOME 46:**
   - These compositors do not implement the XDG Global Shortcuts portal. Configure a custom shortcut in system settings mapped to `qtranscribe --toggle`.

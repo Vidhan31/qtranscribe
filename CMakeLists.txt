@@ -273,10 +273,8 @@ if(ENABLE_QT_DEPLOYMENT)
 
     if(ENABLE_CPACK_DEB)
         include(packaging/deb/CPackDebConfig.cmake)
-    else()
-        include(packaging/tarball/CPackTarballConfig.cmake)
+        include(CPack)
     endif()
-    include(CPack)
 endif()
 
 include(CTest)

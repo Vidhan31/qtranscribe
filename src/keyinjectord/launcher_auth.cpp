@@ -175,8 +175,9 @@ bool validateExecutableTopology(const std::filesystem::path& parentExePath, cons
 
 #ifndef KEYINJECTORD_DEV_AUTH
     if ((parentDirStat.st_mode & S_IWGRP) && parentDirStat.st_gid != 0) {
-        KEYINJECTORD_LOG_ERROR("Launcher authorization failed: parent directory '%s' is group-writable by non-root group %d",
-                               parentDir.c_str(), parentDirStat.st_gid);
+        KEYINJECTORD_LOG_ERROR(
+            "Launcher authorization failed: parent directory '%s' is group-writable by non-root group %d",
+            parentDir.c_str(), parentDirStat.st_gid);
         return setResult(AuthResult::GroupWritable);
     }
 #endif
@@ -195,8 +196,9 @@ bool validateExecutableTopology(const std::filesystem::path& parentExePath, cons
 
 #ifndef KEYINJECTORD_DEV_AUTH
     if ((selfDirStat.st_mode & S_IWGRP) && selfDirStat.st_gid != 0) {
-        KEYINJECTORD_LOG_ERROR("Launcher authorization failed: self directory '%s' is group-writable by non-root group %d",
-                               selfDir.c_str(), selfDirStat.st_gid);
+        KEYINJECTORD_LOG_ERROR(
+            "Launcher authorization failed: self directory '%s' is group-writable by non-root group %d",
+            selfDir.c_str(), selfDirStat.st_gid);
         return setResult(AuthResult::GroupWritable);
     }
 #endif
@@ -229,9 +231,9 @@ bool validateExecutableTopology(const std::filesystem::path& parentExePath, cons
     // In production / release mode (or when self is root-owned):
     // Helper, parent binary, and containing directories must be strictly owned by root (UID 0).
     if (selfStat.st_uid != 0 || parentStat.st_uid != 0 || parentDirStat.st_uid != 0 || selfDirStat.st_uid != 0) {
-        KEYINJECTORD_LOG_ERROR(
-            "Launcher authorization failed: production helper/parent/dir must be root-owned (self UID: %d, parent UID: %d, parent dir UID: %d, self dir UID: %d)",
-            selfStat.st_uid, parentStat.st_uid, parentDirStat.st_uid, selfDirStat.st_uid);
+        KEYINJECTORD_LOG_ERROR("Launcher authorization failed: production helper/parent/dir must be root-owned (self "
+                               "UID: %d, parent UID: %d, parent dir UID: %d, self dir UID: %d)",
+                               selfStat.st_uid, parentStat.st_uid, parentDirStat.st_uid, selfDirStat.st_uid);
         return setResult(AuthResult::NonRootOwner);
     }
 
