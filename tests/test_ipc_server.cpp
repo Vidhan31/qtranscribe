@@ -1,5 +1,6 @@
 #include "keyinjectord/device_interface.h"
 #include "keyinjectord/ipc_server.h"
+#include "keyinjectord/launcher_auth.h"
 #include "keyinjectord/protocol.h"
 
 #include <QCoreApplication>
@@ -175,6 +176,34 @@ private slots:
     void testInvalidDescriptorThrows() {
         MockDevice mockDevice;
         QVERIFY_EXCEPTION_THROWN(keyinjectord::IpcServer server(-1, mockDevice), std::invalid_argument);
+    }
+
+    void testAuthorizeLauncherSuccess() {
+        int sv[2];
+        QCOMPARE(::socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0, sv), 0);
+
+        keyinjectord::AuthResult res = keyinjectord::AuthResult::InvalidFd;
+        bool ok = keyinjectord::authorizeLauncher(sv[0], &res);
+        ::close(sv[0]);
+        ::close(sv[1]);
+
+        QCOMPARE(res, keyinjectord::AuthResult::Success);
+        QVERIFY(ok);
+    }
+
+    void testAuthorizeLauncherInvalidFd() {
+        keyinjectord::AuthResult res = keyinjectord::AuthResult::Success;
+        bool ok = keyinjectord::authorizeLauncher(-1, &res);
+        QCOMPARE(res, keyinjectord::AuthResult::InvalidFd);
+        QVERIFY(!ok);
+    }
+
+    void testAuthorizeLauncherNonSocketFd() {
+        keyinjectord::AuthResult res = keyinjectord::AuthResult::Success;
+        // stdout (1) is not a socket
+        bool ok = keyinjectord::authorizeLauncher(1, &res);
+        QCOMPARE(res, keyinjectord::AuthResult::NotASocket);
+        QVERIFY(!ok);
     }
 };
 

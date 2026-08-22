@@ -99,6 +99,7 @@ add_test(
 qt_add_executable(test_ipc_server
     test_ipc_server.cpp
     ${CMAKE_SOURCE_DIR}/src/keyinjectord/ipc_server.cpp
+    ${CMAKE_SOURCE_DIR}/src/keyinjectord/launcher_auth.cpp
 )
 
 target_link_libraries(test_ipc_server

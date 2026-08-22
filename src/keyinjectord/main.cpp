@@ -3,6 +3,8 @@
 #include "logging.h"
 #include "uinput_device.h"
 
+#include "launcher_auth.h"
+
 #include <cerrno>
 #include <cstdio>
 #include <cstdlib>
@@ -11,9 +13,6 @@
 #include <string>
 
 #include <sys/prctl.h>
-#include <sys/socket.h>
-#include <sys/stat.h>
-#include <sys/un.h>
 #include <fcntl.h>
 #include <signal.h>
 #include <unistd.h>
@@ -36,42 +35,6 @@ void printUsage(const char* progName) {
                  "  sudo setcap \"cap_dac_override+p\" %s\n"
                  "\n",
                  progName, progName);
-}
-
-bool validateSocketFd(int fd) {
-    if (fd < 0) {
-        KEYINJECTORD_LOG_ERROR("Invalid file descriptor value: %d", fd);
-        return false;
-    }
-
-    if (fcntl(fd, F_GETFD) == -1) {
-        KEYINJECTORD_LOG_ERROR("File descriptor %d is not open: %s", fd, std::strerror(errno));
-        return false;
-    }
-
-    int type = 0;
-    socklen_t len = sizeof(type);
-    if (getsockopt(fd, SOL_SOCKET, SO_TYPE, &type, &len) != 0) {
-        KEYINJECTORD_LOG_ERROR("Descriptor %d is not a socket: %s", fd, std::strerror(errno));
-        return false;
-    }
-    if (type != SOCK_STREAM) {
-        KEYINJECTORD_LOG_ERROR("Descriptor %d is not a SOCK_STREAM socket (type=%d)", fd, type);
-        return false;
-    }
-
-    struct sockaddr_storage addr {};
-    socklen_t addrLen = sizeof(addr);
-    if (getpeername(fd, reinterpret_cast<struct sockaddr*>(&addr), &addrLen) != 0) {
-        KEYINJECTORD_LOG_ERROR("Descriptor %d is not connected to a peer: %s", fd, std::strerror(errno));
-        return false;
-    }
-    if (addr.ss_family != AF_UNIX) {
-        KEYINJECTORD_LOG_ERROR("Descriptor %d is not an AF_UNIX socket (family=%d)", fd, addr.ss_family);
-        return false;
-    }
-
-    return true;
 }
 
 } // namespace
@@ -119,7 +82,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    if (!validateSocketFd(socketFd)) {
+    if (!keyinjectord::authorizeLauncher(socketFd)) {
         return 1;
     }
 

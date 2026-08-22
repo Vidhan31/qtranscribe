@@ -1,0 +1,28 @@
+#pragma once
+
+#include <sys/types.h>
+
+namespace keyinjectord {
+
+enum class AuthResult {
+    Success,
+    InvalidFd,
+    NotASocket,
+    NotConnectedUnixSocket,
+    PeerCredsFailed,
+    UidMismatch,
+    PidMismatch,
+    ParentExeReadFailed,
+    SelfExeReadFailed,
+    UnauthorizedExecutable,
+    StatFailed,
+    NotRegularFile,
+    WorldWritable,
+    UntrustedLocation
+};
+
+const char* authResultToString(AuthResult result);
+
+bool authorizeLauncher(int socketFd, AuthResult* outResult = nullptr);
+
+} // namespace keyinjectord
