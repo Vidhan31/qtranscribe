@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=QTranscribe
+Exec=qtranscribe
+Icon=io.github.qtranscribe
+Categories=Utility;
+Terminal=false
+StartupWMClass=io.github.qtranscribe
+Comment=Speech to Text Application

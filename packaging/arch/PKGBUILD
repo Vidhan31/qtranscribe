@@ -1,0 +1,65 @@
+# Maintainer: Vidhan31 <support@qtranscribe.org>
+pkgname=qtranscribe
+pkgver=1.0.0
+pkgrel=1
+pkgdesc="Fast and modern speech-to-text desktop application"
+arch=('x86_64')
+url="https://github.com/Vidhan31/qtranscribe"
+license=('GPL-3.0-or-later')
+depends=(
+  'qt6-base'
+  'qt6-declarative'
+  'qt6-multimedia'
+  'qt6-svg'
+  'qt6-wayland'
+  'qtkeychain-qt6'
+  'libevdev'
+  'libcap'
+  'wayland'
+  'wl-clipboard'
+  'vulkan-icd-loader'
+  'hicolor-icon-theme'
+)
+makedepends=(
+  'cmake'
+  'ninja'
+  'gcc'
+  'wayland-protocols'
+  'pkgconf'
+  'vulkan-headers'
+  'shaderc'
+  'spirv-headers'
+)
+checkdepends=(
+  'desktop-file-utils'
+)
+options=('!debug' 'strip')
+install="${pkgname}.install"
+source=("${pkgname}-${pkgver}.tar.gz::https://github.com/Vidhan31/qtranscribe/archive/v${pkgver}.tar.gz")
+sha256sums=('SKIP')
+
+build() {
+  local cmake_options=(
+    -B build
+    -S "${pkgname}-${pkgver}"
+    -G Ninja
+    -W no-author
+    -D CMAKE_BUILD_TYPE=None
+    -D CMAKE_INSTALL_PREFIX=/usr
+    -D ENABLE_QT_DEPLOYMENT=OFF
+    -D BUILD_WL_CLIPBOARD=OFF
+    -D BUILD_KEYINJECTORD=ON
+    -D FETCHCONTENT_SOURCE_DIR_WHISPER=/opt/whisper-src
+  )
+  cmake "${cmake_options[@]}"
+  cmake --build build
+}
+
+check() {
+  desktop-file-validate "${srcdir}/${pkgname}-${pkgver}/assets/io.github.qtranscribe.desktop"
+  QT_QPA_PLATFORM=offscreen ctest --test-dir build --output-on-failure
+}
+
+package() {
+  DESTDIR="${pkgdir}" cmake --install build
+}

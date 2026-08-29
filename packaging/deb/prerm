@@ -1,0 +1,18 @@
+#!/bin/sh
+set -e
+
+case "$1" in
+    remove|deconfigure)
+        # Remove symlinks created in /usr/bin
+        rm -f /usr/bin/qtranscribe
+        rm -f /usr/bin/keyinjectord
+        ;;
+    upgrade|failed-upgrade)
+        ;;
+    *)
+        echo "prerm called with unknown argument \`$1'" >&2
+        exit 1
+        ;;
+esac
+
+exit 0

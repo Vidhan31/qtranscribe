@@ -1,0 +1,186 @@
+# syntax=docker/dockerfile:1
+ARG UBUNTU_VERSION=24.04
+FROM ubuntu:${UBUNTU_VERSION} AS builder
+
+ARG APP_NAME=qtranscribe
+ARG QT_VERSION=6.11.1
+ARG QT_ARCH=linux_gcc_64
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install system build dependencies, packaging utilities, and runtime development headers
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    g++ \
+    gcc \
+    cmake \
+    ninja-build \
+    git \
+    pkg-config \
+    tar \
+    gzip \
+    file \
+    dpkg-dev \
+    libcap2-bin \
+    desktop-file-utils \
+    python3 \
+    python3-pip \
+    libwayland-dev \
+    wayland-protocols \
+    libsecret-1-dev \
+    libevdev-dev \
+    libcap-dev \
+    libxkbcommon-dev \
+    libgl1-mesa-dev \
+    libegl1-mesa-dev \
+    libvulkan-dev \
+    glslc \
+    spirv-headers \
+    libfontconfig1-dev \
+    libfreetype6-dev \
+    libglib2.0-dev \
+    libdbus-1-dev \
+    libasound2-dev \
+    libpulse-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install latest aqtinstall to handle Qt 6.11+ repository metadata
+RUN pip3 install --no-cache-dir --upgrade --break-system-packages aqtinstall
+
+# Install Qt 6.11.1 with multimedia module (qtsvg and qtwayland client are included in base)
+RUN mkdir -p /opt/Qt && \
+    aqt install-qt linux desktop ${QT_VERSION} ${QT_ARCH} \
+        -m qtmultimedia \
+        --outputdir /opt/Qt
+
+ENV QT_DIR=/opt/Qt/${QT_VERSION}/gcc_64
+ENV PATH="${QT_DIR}/bin:${PATH}"
+ENV CMAKE_PREFIX_PATH="${QT_DIR}"
+
+# Verify Qt installation and required Wayland platform plugin
+RUN set -eux; \
+    test -f "${QT_DIR}/bin/qmake"; \
+    test -f "${QT_DIR}/lib/libQt6Core.so"; \
+    test -f "${QT_DIR}/plugins/platforms/libqwayland.so" || test -f "${QT_DIR}/plugins/platforms/libqwayland-generic.so"
+
+# Build QtKeychain from source against Qt 6.11.1
+WORKDIR /tmp/qtkeychain-build
+RUN git clone --depth 1 --branch 0.15.0 https://github.com/frankosterfeld/qtkeychain.git /tmp/qtkeychain-src && \
+    cmake -S /tmp/qtkeychain-src -B /tmp/qtkeychain-build -G Ninja \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_PREFIX_PATH="${QT_DIR}" \
+        -DCMAKE_INSTALL_PREFIX="${QT_DIR}" \
+        -DBUILD_WITH_QT6=ON \
+        -DBUILD_TEST_APPLICATION=OFF \
+        -DBUILD_TRANSLATIONS=OFF && \
+    cmake --build /tmp/qtkeychain-build && \
+    cmake --install /tmp/qtkeychain-build && \
+    rm -rf /tmp/qtkeychain-src /tmp/qtkeychain-build
+
+# Pre-clone wl-clipboard source in cached layer so CMake does not download it during every build
+RUN git clone --depth 1 --branch v2.3.0 https://github.com/bugaevc/wl-clipboard.git /opt/wl-clipboard-src
+
+# Pre-clone whisper.cpp source in cached layer so CMake does not download it during every build
+RUN git clone --depth 1 --branch v1.9.3 https://github.com/ggml-org/whisper.cpp.git /opt/whisper-src
+
+# Build QTranscribe application and package Debian package with CPack
+WORKDIR /build
+COPY . /build/src-tree
+
+ARG APP_VERSION=""
+
+WORKDIR /build/build
+RUN cmake -S /build/src-tree -B /build/build -G Ninja \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_PREFIX_PATH="${QT_DIR}" \
+        -DCMAKE_INSTALL_PREFIX="/opt/qtranscribe" \
+        -DENABLE_QT_DEPLOYMENT=ON \
+        -DENABLE_CPACK_DEB=ON \
+        -DBUILD_WL_CLIPBOARD=ON \
+        -DFETCHCONTENT_SOURCE_DIR_WL_CLIPBOARD_SRC=/opt/wl-clipboard-src \
+        -DFETCHCONTENT_SOURCE_DIR_WHISPER=/opt/whisper-src \
+        ${APP_VERSION:+-DQTRANSCRIBE_VERSION=${APP_VERSION}} && \
+    cmake --build /build/build && \
+    QT_QPA_PLATFORM=offscreen ctest --test-dir /build/build --output-on-failure && \
+    cpack -G DEB
+
+# ---------------------------------------------------------------------------
+# Validation: Verify .deb integrity, metadata, installation, and capabilities
+# ---------------------------------------------------------------------------
+RUN set -eux; \
+    DEB_PACKAGE=$(find /build/build -maxdepth 1 -name "*.deb" | head -n 1); \
+    echo "============================================================"; \
+    echo "Inspecting and validating generated Debian package: ${DEB_PACKAGE}"; \
+    echo "============================================================"; \
+    test -f "${DEB_PACKAGE}"; \
+    \
+    echo "--- Inspecting Debian package metadata & dependencies ---"; \
+    dpkg-deb -I "${DEB_PACKAGE}"; \
+    \
+    echo "--- Listing package contents ---"; \
+    dpkg-deb -c "${DEB_PACKAGE}"; \
+    \
+    echo "--- Testing clean package installation via dpkg ---"; \
+    dpkg -i "${DEB_PACKAGE}"; \
+    \
+    echo "--- Checking installed binaries in /opt/qtranscribe/bin ---"; \
+    test -x /opt/qtranscribe/bin/qtranscribe; \
+    test -x /opt/qtranscribe/bin/keyinjectord; \
+    test -x /opt/qtranscribe/bin/wl-copy; \
+    test -x /opt/qtranscribe/bin/wl-paste; \
+    test -f /opt/qtranscribe/bin/qt.conf; \
+    \
+    echo "--- Checking symlinks in /usr/bin ---"; \
+    test -L /usr/bin/qtranscribe; \
+    test "$(readlink -f /usr/bin/qtranscribe)" = "/opt/qtranscribe/bin/qtranscribe"; \
+    test -L /usr/bin/keyinjectord; \
+    test "$(readlink -f /usr/bin/keyinjectord)" = "/opt/qtranscribe/bin/keyinjectord"; \
+    \
+    echo "--- Checking desktop file & icons in /usr/share ---"; \
+    test -f /usr/share/applications/io.github.qtranscribe.desktop; \
+    desktop-file-validate /usr/share/applications/io.github.qtranscribe.desktop; \
+    test -f /usr/share/icons/hicolor/512x512/apps/qtranscribe.png; \
+    test -f /usr/share/icons/hicolor/512x512/apps/io.github.qtranscribe.png; \
+    \
+    echo "--- Checking keyinjectord capability (cap_dac_override) ---"; \
+    getcap /opt/qtranscribe/bin/keyinjectord | grep -E 'cap_dac_override'; \
+    \
+    echo "--- Checking Wayland platform plugin ---"; \
+    test -f /opt/qtranscribe/plugins/platforms/libqwayland.so || \
+    test -f /opt/qtranscribe/plugins/platforms/libqwayland-generic.so || \
+    test -f /opt/qtranscribe/plugins/platforms/libqwayland-egl.so; \
+    \
+    echo "--- Asserting complete absence of X11/XCB plugins & libraries ---"; \
+    ! find /opt/qtranscribe -name "*xcb*" | grep .; \
+    ! find /opt/qtranscribe -name "*X11*" | grep .; \
+    ! find /opt/qtranscribe -name "*eglfs*" | grep .; \
+    \
+    echo "--- Checking Qt companion ICU libraries ---"; \
+    find /opt/qtranscribe -name "libicui18n.so*" | grep .; \
+    \
+    echo "--- Verifying that lib/ contains ONLY Qt6, qtkeychain, and Qt-bundled ICU libraries ---"; \
+    NON_QT_LIBS=$(find /opt/qtranscribe -type f -name "*.so*" \
+        ! -path "*/plugins/*" \
+        ! -path "*/qml/*" \
+        ! -name "libQt6*" \
+        ! -name "libqt6keychain*" \
+        ! -name "libicu*" \
+        ! -name "libq*" || true); \
+    if [ -n "${NON_QT_LIBS}" ]; then \
+        echo "ERROR: Disallowed non-Qt libraries found in package:"; \
+        echo "${NON_QT_LIBS}"; \
+        exit 1; \
+    fi; \
+    \
+    echo "--- Testing package removal and cleanup ---"; \
+    dpkg -r qtranscribe; \
+    test ! -e /usr/bin/qtranscribe; \
+    test ! -e /usr/bin/keyinjectord; \
+    echo "Debian package validation succeeded cleanly!"
+
+# ---------------------------------------------------------------------------
+# Export stage: Output standalone .deb package to host
+# ---------------------------------------------------------------------------
+FROM scratch AS export
+
+COPY --from=builder /build/build/*.deb /

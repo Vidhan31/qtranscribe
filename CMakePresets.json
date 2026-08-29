@@ -1,0 +1,97 @@
+{
+    "version": 3,
+    "configurePresets": [
+        {
+            "name": "linux-qt6-debug",
+            "displayName": "Qt 6 Debug",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "CMAKE_PREFIX_PATH": "~/Qt/6.11.1/gcc_64",
+                "BUILD_KEYINJECTORD": "ON"
+            },
+            "environment": {
+                "QT_QPA_PLATFORM": "wayland"
+            }
+        },
+        {
+            "name": "linux-qt6-release",
+            "displayName": "Qt 6 Release",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build-release",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "CMAKE_INTERPROCEDURAL_OPTIMIZATION": "ON",
+                "CMAKE_PREFIX_PATH": "~/Qt/6.11.1/gcc_64",
+                "BUILD_KEYINJECTORD": "ON"
+            },
+            "environment": {
+                "QT_QPA_PLATFORM": "wayland"
+            }
+        },
+        {
+            "name": "linux-qt6-relwithdebinfo",
+            "displayName": "Qt 6 RelWithDebInfo",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build-relwithdebinfo",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+                "CMAKE_PREFIX_PATH": "~/Qt/6.11.1/gcc_64",
+                "BUILD_KEYINJECTORD": "ON"
+            },
+            "environment": {
+                "QT_QPA_PLATFORM": "wayland"
+            }
+        }
+    ],
+    "buildPresets": [
+        {
+            "name": "build-debug",
+            "configurePreset": "linux-qt6-debug"
+        },
+        {
+            "name": "build-release",
+            "configurePreset": "linux-qt6-release"
+        },
+        {
+            "name": "build-relwithdebinfo",
+            "configurePreset": "linux-qt6-relwithdebinfo"
+        }
+    ],
+    "testPresets": [
+        {
+            "name": "test-debug",
+            "displayName": "Test (Debug)",
+            "configurePreset": "linux-qt6-debug",
+            "output": {
+                "outputOnFailure": true
+            },
+            "environment": {
+                "QT_QPA_PLATFORM": "offscreen"
+            }
+        },
+        {
+            "name": "test-release",
+            "displayName": "Test (Release)",
+            "configurePreset": "linux-qt6-release",
+            "output": {
+                "outputOnFailure": true
+            },
+            "environment": {
+                "QT_QPA_PLATFORM": "offscreen"
+            }
+        },
+        {
+            "name": "test-relwithdebinfo",
+            "displayName": "Test (RelWithDebInfo)",
+            "configurePreset": "linux-qt6-relwithdebinfo",
+            "output": {
+                "outputOnFailure": true
+            },
+            "environment": {
+                "QT_QPA_PLATFORM": "offscreen"
+            }
+        }
+    ]
+}

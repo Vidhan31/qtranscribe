@@ -1,0 +1,109 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  validate-version:
+    name: Validate VERSION File (Semantic Versioning)
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check VERSION file format
+        run: |
+          test -f VERSION || (echo "ERROR: VERSION file is missing" && exit 1)
+          APP_VER=$(cat VERSION | tr -d '[:space:]')
+          echo "Canonical version in VERSION: ${APP_VER}"
+          if ! [[ "${APP_VER}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "ERROR: VERSION '${APP_VER}' does not follow Semantic Versioning (X.Y.Z)"
+            exit 1
+          fi
+          echo "VERSION file format is valid semver."
+
+  validate-changelog:
+    name: Validate CHANGELOG.md (Keep a Changelog)
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate CHANGELOG format
+        uses: mindsers/changelog-reader-action@v2
+        with:
+          path: ./CHANGELOG.md
+          validation_level: error
+
+  lint-and-format:
+    name: Code Quality, Formatting & Linting (pre-commit)
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Qt 6.11.1
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.11.1'
+          arch: 'linux_gcc_64'
+          modules: 'qtmultimedia'
+          cache: true
+
+      - name: Install pre-commit and clang-format
+        run: pip install pre-commit clang-format==22.1.8
+
+      - name: Cache pre-commit environments
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}
+
+      - name: Run pre-commit hooks
+        run: |
+          echo "Running pre-commit hooks on all files..."
+          pre-commit run --all-files --show-diff-on-failure
+
+  build-and-test:
+    name: Build & Package Validation (Ubuntu 24.04 / Qt 6.11)
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build & Validate Debian Package
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: packaging/deb/Dockerfile.deb
+          target: export
+          outputs: type=local,dest=./dist/deb
+          cache-from: type=gha,scope=ci-deb-build
+          cache-to: type=gha,mode=max,scope=ci-deb-build
+
+      - name: Verify Debian package artifact output
+        run: |
+          echo "Generated Debian packages:"
+          ls -lh ./dist/deb/*.deb
+          test -f "$(find ./dist/deb -maxdepth 1 -name '*.deb' | head -n 1)"
